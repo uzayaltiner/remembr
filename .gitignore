@@ -1,0 +1,27 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+.env.local
+*.tsbuildinfo
+coverage/
+.vitest/
+
+# Bun
+bun.lockb
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local index data — never commit user data
+.remembr/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# HF transformers cache (very large)
+.cache/
