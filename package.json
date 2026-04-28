@@ -1,16 +1,23 @@
 {
   "name": "remembr",
-  "version": "0.1.0-pre",
-  "description": "Recall anything across your tools — semantic search MCP server + CLI for Claude Code, Cursor, and any MCP client.",
+  "version": "0.1.0-pre.1",
+  "description": "Recall anything across your tools — local-first semantic search MCP server + CLI for Claude Code, Cursor, and any MCP client.",
   "type": "module",
   "bin": {
-    "remembr": "./dist/cli.js"
+    "remembr": "./bin/remembr"
   },
-  "main": "./dist/cli.js",
+  "files": [
+    "bin/",
+    "src/",
+    "tsconfig.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md"
+  ],
   "scripts": {
     "dev": "bun run src/cli.tsx",
     "remembr": "bun run src/cli.tsx",
-    "build": "bun build src/cli.tsx --target=bun --outdir=dist",
     "build:binary": "bun build src/cli.tsx --compile --outfile=dist/remembr",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -21,25 +28,37 @@
   },
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "claude-code",
     "cursor",
+    "cline",
     "ai-memory",
     "semantic-search",
     "vector-search",
+    "sqlite-vec",
+    "fts5",
+    "transformers",
     "local-first",
     "privacy",
     "cli",
-    "terminal"
+    "terminal",
+    "ink"
   ],
   "author": "Uzay Altıner",
   "license": "MIT",
-  "homepage": "https://github.com/uzayaltiner/remembr",
+  "homepage": "https://github.com/uzayaltiner/remembr#readme",
+  "bugs": {
+    "url": "https://github.com/uzayaltiner/remembr/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/uzayaltiner/remembr.git"
   },
   "engines": {
     "bun": ">=1.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
