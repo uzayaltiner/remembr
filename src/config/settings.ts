@@ -39,6 +39,11 @@ export const DEFAULT_CONFIG: BrainConfig = {
     fs: { enabled: false },
     browser: { enabled: false, maxAgeDays: 180, minVisitCount: 1 },
     pdf: { enabled: false },
+    calendar: { enabled: false },
+    github: { enabled: false },
+    slack: { enabled: false },
+    mail: { enabled: false },
+    'apple-notes': { enabled: false },
   },
 };
 

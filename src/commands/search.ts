@@ -16,6 +16,10 @@ const SOURCE_ICONS: Record<string, string> = {
   browser: '🌐',
   pdf: '📕',
   slack: '💬',
+  calendar: '📅',
+  github: '🐙',
+  mail: '✉️',
+  'apple-notes': '📝',
 };
 
 export interface SearchCommandOptions {
