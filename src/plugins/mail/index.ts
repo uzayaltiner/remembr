@@ -22,8 +22,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { glob } from 'glob';
-import type { Document, IngestContext, Plugin } from '../types.ts';
-import { type ParsedEmail, parseEmlx } from './parser.ts';
+import type { Document, IngestContext, Plugin } from '../types.js';
+import { type ParsedEmail, parseEmlx } from './parser.js';
 
 const NAME = 'mail';
 

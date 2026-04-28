@@ -5,6 +5,19 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Runtime: Bun → Node.js ≥ 20.** Distribution is now a standard
+  `npm install -g remembr`. No more system SQLite or Bun install for users
+  or contributors.
+- **Database driver: `bun:sqlite` → `better-sqlite3`.** Vendors its own
+  SQLite build with extension support, so sqlite-vec loads without any
+  system-sqlite dance. Linux is now genuinely supported alongside macOS.
+- **Test runner: `bun:test` → Vitest.** 68 tests, same coverage.
+- **TypeScript execution: `bun run` → `tsx` (dev) + `tsc` build to `dist/`
+  (publish).** Published tarball ships compiled JS only.
+- **CI matrix:** `ubuntu-latest` and `macos-latest` on Node 20 / 22.
+
 ## [0.1.0-pre] — 2026-04-28
 
 The first development release. All major surfaces work end-to-end against

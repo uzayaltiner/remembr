@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import {
   MAX_CHUNK_CHARS,
   MIN_CHUNK_CHARS,
   chunkPdfText,
-} from '../../src/plugins/pdf/parser.ts';
+} from '../../src/plugins/pdf/parser.js';
 
 describe('chunkPdfText', () => {
   it('returns empty array for empty input', () => {

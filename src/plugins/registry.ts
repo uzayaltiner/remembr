@@ -1,5 +1,5 @@
-import type { BrainConfig, PluginConfig } from '../config/settings.ts';
-import type { Plugin } from './types.ts';
+import type { BrainConfig, PluginConfig } from '../config/settings.js';
+import type { Plugin } from './types.js';
 
 export interface PluginStatus {
   plugin: Plugin;

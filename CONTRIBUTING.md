@@ -9,21 +9,19 @@ remembr more useful for the next person.
 ```bash
 git clone https://github.com/uzayaltiner/remembr.git
 cd remembr
-bun install
-ln -sf "$(pwd)/bin/remembr" ~/.local/bin/remembr
+npm install
 
-bun run typecheck          # tsc --noEmit
-bun run lint               # biome check
-bun test                   # bun:test, ~70 unit tests
+npm run typecheck          # tsc --noEmit
+npm run lint               # biome check
+npm test                   # vitest, 68 unit tests
+npm run dev -- "<query>"   # run CLI from source via tsx
 ```
 
-The repo uses [Bun](https://bun.sh) as the runtime, [Biome](https://biomejs.dev)
-for lint+format, and `bun:test` for tests. Apple's bundled SQLite ships
-without extension support, so you'll also need:
-
-```bash
-brew install sqlite
-```
+The repo uses [Node.js ≥ 20](https://nodejs.org), [tsx](https://tsx.is) for
+running TypeScript directly in development, [Biome](https://biomejs.dev)
+for lint+format, and [Vitest](https://vitest.dev) for tests.
+[better-sqlite3](https://github.com/WiseLibs/better-sqlite3) ships its own
+SQLite build with extension support, so no system SQLite is required.
 
 ## Project layout
 

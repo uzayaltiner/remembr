@@ -2,13 +2,13 @@
  * Embedder factory: read config, return the right provider.
  */
 
-import type { BrainConfig } from '../../config/settings.ts';
-import { OllamaEmbedder } from './ollama.ts';
-import { TransformersEmbedder } from './transformers.ts';
-import { type Embedder, EmbedderError } from './types.ts';
+import type { BrainConfig } from '../../config/settings.js';
+import { OllamaEmbedder } from './ollama.js';
+import { TransformersEmbedder } from './transformers.js';
+import { type Embedder, EmbedderError } from './types.js';
 
-export type { Embedder, EmbedTask } from './types.ts';
-export { EmbedderError } from './types.ts';
+export type { Embedder, EmbedTask } from './types.js';
+export { EmbedderError } from './types.js';
 
 const DEFAULT_TRANSFORMERS_MODEL = 'Xenova/multilingual-e5-small';
 

@@ -1,44 +1,18 @@
 /**
  * Local-first persistence layer.
  *
- * Bun-native SQLite + sqlite-vec virtual table for kNN search + FTS5 for
+ * better-sqlite3 + sqlite-vec virtual table for kNN search + FTS5 for
  * keyword recall. Single file at ~/.remembr/db.sqlite. No server, no daemon.
  *
- * Note on the custom sqlite hook below: Bun's bundled SQLite is built without
- * dynamic-extension support. We point bun:sqlite at the system / Homebrew
- * libsqlite3 (which does support extensions) so we can load sqlite-vec.
- * On distribution we'll bundle a known-good libsqlite3.
+ * better-sqlite3 vendors its own SQLite build with extension support, so
+ * sqlite-vec loads without any system-sqlite dance.
  */
 
-import { Database, type Statement } from 'bun:sqlite';
-import { existsSync } from 'node:fs';
+import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 
-type DatabaseType = Database;
-
-const CUSTOM_SQLITE_CANDIDATES = [
-  '/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib', // Apple Silicon
-  '/usr/local/opt/sqlite/lib/libsqlite3.dylib', // Intel mac
-  '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0', // Debian/Ubuntu
-];
-
-let customSqliteConfigured = false;
-function ensureCustomSqlite(): void {
-  if (customSqliteConfigured) return;
-  customSqliteConfigured = true;
-  for (const candidate of CUSTOM_SQLITE_CANDIDATES) {
-    if (existsSync(candidate)) {
-      Database.setCustomSQLite(candidate);
-      return;
-    }
-  }
-  throw new Error(
-    'remembr requires a libsqlite3 with extension support. Install one:\n' +
-      '  macOS: brew install sqlite\n' +
-      '  Debian/Ubuntu: apt install libsqlite3-0\n' +
-      '  (Bun ships a stripped sqlite that cannot load sqlite-vec.)',
-  );
-}
+type DatabaseType = Database.Database;
+type Statement = Database.Statement;
 
 const SCHEMA_VERSION = 3;
 
@@ -118,8 +92,7 @@ export class Store {
   constructor(options: StoreOptions) {
     this.dimensions = options.dimensions ?? 768;
 
-    ensureCustomSqlite();
-    this.db = new Database(options.path, { create: true });
+    this.db = new Database(options.path);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA synchronous = NORMAL');
     this.db.exec('PRAGMA foreign_keys = ON');
@@ -161,7 +134,7 @@ export class Store {
       'SELECT DISTINCT document_id FROM chunks WHERE source = ?',
     );
 
-    this.insertChunkTx = this.db.transaction((chunk: ChunkInput, vector: number[]): number => {
+    this.insertChunkTx = this.db.transaction((chunk: ChunkInput, vector: number[]) => {
       if (vector.length !== this.dimensions) {
         throw new Error(
           `Embedding dimension mismatch: got ${vector.length}, expected ${this.dimensions}`,
@@ -202,7 +175,7 @@ export class Store {
    */
   deleteDocument(source: string, documentId: string): number {
     const countRow = this.db
-      .query('SELECT COUNT(*) AS n FROM chunks WHERE source = ? AND document_id = ?')
+      .prepare('SELECT COUNT(*) AS n FROM chunks WHERE source = ? AND document_id = ?')
       .get(source, documentId) as { n: number };
     this.deleteDocumentStmt.run(source, documentId);
     return countRow.n;
@@ -336,8 +309,8 @@ export class Store {
    * Delete all chunks (and their embeddings via cascade) from a source.
    * Returns the number of *chunks* removed (cascade rows are excluded).
    *
-   * bun:sqlite's `result.changes` rolls cascade-trigger writes into the
-   * total, so we count first and rely on that number.
+   * `result.changes` from the underlying driver rolls cascade-trigger writes
+   * into the total, so we count first and rely on that number.
    */
   deleteBySource(source: string): number {
     const before = this.count(source);
@@ -357,7 +330,7 @@ export class Store {
   }
 
   private applySchema(): void {
-    const versionRow = this.db.query('PRAGMA user_version').get() as {
+    const versionRow = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     } | null;
     const currentVersion = versionRow?.user_version ?? 0;

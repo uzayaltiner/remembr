@@ -1,9 +1,9 @@
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import React, { type FC, useEffect, useState } from 'react';
-import type { SearchResult } from '../../core/store.ts';
-import { ResultItem } from '../components/ResultItem.tsx';
-import { useSearch } from '../hooks/useSearch.ts';
+import type { SearchResult } from '../../core/store.js';
+import { ResultItem } from '../components/ResultItem.js';
+import { useSearch } from '../hooks/useSearch.js';
 
 const RESULT_LIMIT = 8;
 

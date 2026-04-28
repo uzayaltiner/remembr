@@ -21,7 +21,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { Document, IngestContext, Plugin } from '../types.ts';
+import type { Document, IngestContext, Plugin } from '../types.js';
 
 const execFileAsync = promisify(execFile);
 

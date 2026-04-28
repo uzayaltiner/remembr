@@ -6,14 +6,14 @@
  * directly to avoid global state.
  */
 
-import { appleNotesPlugin } from './apple-notes/index.ts';
-import { browserPlugin } from './browser/index.ts';
-import { calendarPlugin } from './calendar/index.ts';
-import { fsPlugin } from './fs/index.ts';
-import { githubPlugin } from './github/index.ts';
-import { mailPlugin } from './mail/index.ts';
-import { pdfPlugin } from './pdf/index.ts';
-import { registry } from './registry.ts';
+import { appleNotesPlugin } from './apple-notes/index.js';
+import { browserPlugin } from './browser/index.js';
+import { calendarPlugin } from './calendar/index.js';
+import { fsPlugin } from './fs/index.js';
+import { githubPlugin } from './github/index.js';
+import { mailPlugin } from './mail/index.js';
+import { pdfPlugin } from './pdf/index.js';
+import { registry } from './registry.js';
 
 let bootstrapped = false;
 
@@ -30,4 +30,4 @@ export function bootstrapPlugins(): void {
   registry.register(appleNotesPlugin);
 }
 
-export { registry } from './registry.ts';
+export { registry } from './registry.js';

@@ -27,11 +27,11 @@
  * and use the `pdf` plugin.
  */
 
-import { Database } from 'bun:sqlite';
 import { copyFileSync, existsSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Document, IngestContext, Plugin } from '../types.ts';
+import Database from 'better-sqlite3';
+import type { Document, IngestContext, Plugin } from '../types.js';
 
 const NAME = 'apple-notes';
 
@@ -94,7 +94,7 @@ export const appleNotesPlugin: Plugin = {
     const db = new Database(tempPath, { readonly: true });
     try {
       const rows = db
-        .query<NoteRow, []>(`
+        .prepare(`
           SELECT
             obj.ZIDENTIFIER                                AS identifier,
             obj.ZTITLE1                                    AS title,
@@ -109,7 +109,7 @@ export const appleNotesPlugin: Plugin = {
             AND COALESCE(obj.ZMARKEDFORDELETION, 0) = 0
           ORDER BY obj.ZMODIFICATIONDATE1 DESC
         `)
-        .all();
+        .all() as NoteRow[];
 
       const total = rows.length;
       let current = 0;

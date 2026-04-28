@@ -21,9 +21,9 @@ import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { glob } from 'glob';
-import type { Document, IngestContext, Plugin } from '../types.ts';
-import { parseMarkdown } from './parser.ts';
-import { chunkText } from './text-chunker.ts';
+import type { Document, IngestContext, Plugin } from '../types.js';
+import { parseMarkdown } from './parser.js';
+import { chunkText } from './text-chunker.js';
 
 const NAME = 'fs';
 

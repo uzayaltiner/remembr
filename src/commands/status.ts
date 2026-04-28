@@ -1,6 +1,6 @@
-import { PATHS } from '../config/paths.ts';
-import { configExists, readConfig } from '../config/settings.ts';
-import { EmbedderError, createEmbedder } from '../core/embedder/index.ts';
+import { PATHS } from '../config/paths.js';
+import { configExists, readConfig } from '../config/settings.js';
+import { EmbedderError, createEmbedder } from '../core/embedder/index.js';
 
 const CHECK = '✓';
 const CROSS = '✗';

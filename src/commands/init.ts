@@ -1,5 +1,5 @@
-import { PATHS } from '../config/paths.ts';
-import { DEFAULT_CONFIG, configExists, ensureHome, writeConfig } from '../config/settings.ts';
+import { PATHS } from '../config/paths.js';
+import { DEFAULT_CONFIG, configExists, ensureHome, writeConfig } from '../config/settings.js';
 
 export interface InitOptions {
   force?: boolean;

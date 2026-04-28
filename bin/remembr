@@ -1,34 +1,8 @@
-#!/usr/bin/env bash
-# Local development wrapper for `remembr`.
-#
-# Resolves to the project's TypeScript entry via Bun, regardless of
-# the current working directory.
-#
-# To install, add a symlink to your PATH:
-#   ln -s "$(pwd)/bin/remembr" ~/.local/bin/remembr
+#!/usr/bin/env node
+// Entry point for the published `remembr` CLI.
+//
+// After `npm run build`, `dist/cli.js` is the compiled entry. We re-export
+// it here so that `npm i -g remembr` exposes the binary at the symlink
+// without needing a build step on the user's machine.
 
-set -e
-
-# Resolve real path of this script (handles symlinks)
-SCRIPT_PATH="${BASH_SOURCE[0]}"
-while [ -L "$SCRIPT_PATH" ]; do
-  DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
-  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
-  [[ $SCRIPT_PATH != /* ]] && SCRIPT_PATH="$DIR/$SCRIPT_PATH"
-done
-
-PROJECT_ROOT="$(cd -P "$(dirname "$SCRIPT_PATH")/.." && pwd)"
-
-if ! command -v bun >/dev/null 2>&1; then
-  echo "✗ bun is required to run remembr." >&2
-  echo "  Install: curl -fsSL https://bun.sh/install | bash" >&2
-  exit 1
-fi
-
-# Setting NODE_ENV=production tells Ink to skip its react-devtools-core
-# import branch — that package is an optional dependency and won't be
-# installed in production. Without this the CLI throws ERR_MODULE_NOT_FOUND
-# the first time the TUI tries to render.
-export NODE_ENV="${NODE_ENV:-production}"
-
-exec bun run "$PROJECT_ROOT/src/cli.tsx" "$@"
+import '../dist/cli.js';

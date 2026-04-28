@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   OllamaClient,
   OllamaError,
   OllamaModelMissingError,
   OllamaUnreachableError,
-} from '../../src/core/ollama.ts';
+} from '../../src/core/ollama.js';
 
 const HOST = 'http://localhost:11434';
 const MODEL = 'nomic-embed-text';
@@ -12,7 +12,7 @@ const MODEL = 'nomic-embed-text';
 const originalFetch = globalThis.fetch;
 
 function mockFetch(impl: (url: string, init?: RequestInit) => Promise<Response>): void {
-  globalThis.fetch = mock(impl) as unknown as typeof fetch;
+  globalThis.fetch = vi.fn(impl) as unknown as typeof fetch;
 }
 
 function restoreFetch(): void {
@@ -132,7 +132,7 @@ describe('OllamaClient', () => {
     });
 
     it('returns empty array for empty input without calling fetch', async () => {
-      const fetchMock = mock(() => Promise.resolve(jsonResponse({ embeddings: [] })));
+      const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ embeddings: [] })));
       globalThis.fetch = fetchMock as unknown as typeof fetch;
       const vecs = await client.embedBatch([]);
       expect(vecs).toEqual([]);

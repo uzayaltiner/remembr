@@ -14,7 +14,7 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { PATHS } from '../config/paths.ts';
+import { PATHS } from '../config/paths.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 

@@ -7,14 +7,14 @@
  */
 
 import chokidar from 'chokidar';
-import { PATHS } from '../config/paths.ts';
-import { configExists, readConfig, writeConfig } from '../config/settings.ts';
-import { EmbedderError, createEmbedder } from '../core/embedder/index.ts';
-import { Store } from '../core/store.ts';
-import { registry, setPluginEnabled } from '../plugins/registry.ts';
-import type { Document } from '../plugins/types.ts';
-import { log } from '../utils/logger.ts';
-import { Progress } from '../utils/progress.ts';
+import { PATHS } from '../config/paths.js';
+import { configExists, readConfig, writeConfig } from '../config/settings.js';
+import { EmbedderError, createEmbedder } from '../core/embedder/index.js';
+import { Store } from '../core/store.js';
+import { registry, setPluginEnabled } from '../plugins/registry.js';
+import type { Document } from '../plugins/types.js';
+import { log } from '../utils/logger.js';
+import { Progress } from '../utils/progress.js';
 
 // 32 is a sweet spot for Transformers.js on M-series: the model amortises
 // fixed overhead (tokenize call, ONNX session entry) over more inputs,

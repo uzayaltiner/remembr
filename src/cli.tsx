@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { runConfigModel, runConfigProvider, runConfigShow } from './commands/config-cmd.ts';
-import { IndexError, runIndex, runWatch } from './commands/index-cmd.ts';
-import { runInit } from './commands/init.ts';
-import { runPathsAdd, runPathsList, runPathsRemove } from './commands/paths-cmd.ts';
-import { runPluginDisable, runPluginEnable, runPluginsList } from './commands/plugins.ts';
-import { runSearch } from './commands/search.ts';
-import { runServe } from './commands/serve.ts';
-import { runStatus } from './commands/status.ts';
-import { runSync } from './commands/sync-cmd.ts';
-import { bootstrapPlugins } from './plugins/index.ts';
-import { renderTUI } from './ui/render.tsx';
+import { runConfigModel, runConfigProvider, runConfigShow } from './commands/config-cmd.js';
+import { IndexError, runIndex, runWatch } from './commands/index-cmd.js';
+import { runInit } from './commands/init.js';
+import { runPathsAdd, runPathsList, runPathsRemove } from './commands/paths-cmd.js';
+import { runPluginDisable, runPluginEnable, runPluginsList } from './commands/plugins.js';
+import { runSearch } from './commands/search.js';
+import { runServe } from './commands/serve.js';
+import { runStatus } from './commands/status.js';
+import { runSync } from './commands/sync-cmd.js';
+import { bootstrapPlugins } from './plugins/index.js';
+import { renderTUI } from './ui/render.js';
 
 const VERSION = '0.1.0';
 

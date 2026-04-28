@@ -12,14 +12,14 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { configExists } from '../config/settings.ts';
-import { log } from '../utils/logger.ts';
+import { configExists } from '../config/settings.js';
+import { log } from '../utils/logger.js';
 import {
   ListSourcesInputSchema,
   SearchInputSchema,
   runListSourcesTool,
   runSearchTool,
-} from './tools.ts';
+} from './tools.js';
 
 const SERVER_NAME = 'remembr';
 const SERVER_VERSION = '0.1.0';

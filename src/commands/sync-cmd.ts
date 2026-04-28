@@ -14,9 +14,9 @@ import {
   mergeRegisteredPlugins,
   readConfig,
   writeConfig,
-} from '../config/settings.ts';
-import { registry } from '../plugins/registry.ts';
-import { runIndex, runWatch } from './index-cmd.ts';
+} from '../config/settings.js';
+import { registry } from '../plugins/registry.js';
+import { runIndex, runWatch } from './index-cmd.js';
 
 export interface SyncOptions {
   watch?: boolean;

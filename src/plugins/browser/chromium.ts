@@ -7,11 +7,11 @@
  * Time format: microseconds since 1601-01-01 UTC.
  */
 
-import { Database } from 'bun:sqlite';
 import { copyFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { BrowserHistoryEntry, ReadOptions } from './types.ts';
+import Database from 'better-sqlite3';
+import type { BrowserHistoryEntry, ReadOptions } from './types.js';
 
 // Difference between Chromium epoch (1601-01-01) and Unix epoch (1970-01-01),
 // expressed in microseconds. Constant — pre-computed.

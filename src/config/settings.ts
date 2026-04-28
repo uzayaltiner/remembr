@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { PATHS } from './paths.ts';
+import { PATHS } from './paths.js';
 
 export interface OllamaConfig {
   host: string;

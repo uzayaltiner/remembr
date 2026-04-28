@@ -14,7 +14,7 @@
  *   }
  */
 
-import { startMcpServer } from '../mcp/server.ts';
+import { startMcpServer } from '../mcp/server.js';
 
 export async function runServe(): Promise<void> {
   await startMcpServer();

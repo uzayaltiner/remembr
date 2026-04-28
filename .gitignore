@@ -9,8 +9,6 @@ dist/
 coverage/
 .vitest/
 
-# Bun
-bun.lockb
 
 # Editor / OS
 .idea/

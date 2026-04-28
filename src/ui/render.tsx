@@ -8,10 +8,10 @@
 
 import { render } from 'ink';
 import React from 'react';
-import { configExists, readConfig } from '../config/settings.ts';
-import { EmbedderError, createEmbedder } from '../core/embedder/index.ts';
-import type { SearchResult } from '../core/store.ts';
-import { App } from './App.tsx';
+import { configExists, readConfig } from '../config/settings.js';
+import { EmbedderError, createEmbedder } from '../core/embedder/index.js';
+import type { SearchResult } from '../core/store.js';
+import { App } from './App.js';
 
 export async function renderTUI(): Promise<void> {
   // Surface init / connectivity problems before clearing the screen with Ink.

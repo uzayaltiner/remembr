@@ -5,10 +5,10 @@
  *   query → embedder.embed() → Store.search() → format and print.
  */
 
-import { PATHS } from '../config/paths.ts';
-import { configExists, readConfig } from '../config/settings.ts';
-import { EmbedderError, createEmbedder } from '../core/embedder/index.ts';
-import { type SearchResult, Store } from '../core/store.ts';
+import { PATHS } from '../config/paths.js';
+import { configExists, readConfig } from '../config/settings.js';
+import { EmbedderError, createEmbedder } from '../core/embedder/index.js';
+import { type SearchResult, Store } from '../core/store.js';
 
 const SOURCE_ICONS: Record<string, string> = {
   fs: '📄',

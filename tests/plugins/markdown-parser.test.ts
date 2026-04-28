@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import {
   MAX_CHUNK_CHARS,
   MIN_CHUNK_CHARS,
   chunkMarkdown,
   parseMarkdown,
-} from '../../src/plugins/fs/parser.ts';
+} from '../../src/plugins/fs/parser.js';
 
 describe('parseMarkdown', () => {
   it('extracts frontmatter title when present', () => {

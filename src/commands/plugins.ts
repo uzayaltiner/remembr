@@ -1,5 +1,5 @@
-import { readConfig, writeConfig } from '../config/settings.ts';
-import { registry, setPluginEnabled } from '../plugins/registry.ts';
+import { readConfig, writeConfig } from '../config/settings.js';
+import { registry, setPluginEnabled } from '../plugins/registry.js';
 
 export async function runPluginsList(): Promise<void> {
   const config = readConfig();

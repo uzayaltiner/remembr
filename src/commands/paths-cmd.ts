@@ -9,8 +9,8 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
-import { configExists, readConfig, writeConfig } from '../config/settings.ts';
-import { registry } from '../plugins/registry.ts';
+import { configExists, readConfig, writeConfig } from '../config/settings.js';
+import { registry } from '../plugins/registry.js';
 
 export function runPathsAdd(pluginName: string, paths: string[]): void {
   ensureInitialized();

@@ -7,7 +7,7 @@
  * To add a new source: implement Plugin, register it, that's it.
  */
 
-import type { PluginConfig } from '../config/settings.ts';
+import type { PluginConfig } from '../config/settings.js';
 
 export interface Document {
   /** Stable identifier on the plugin side (e.g. file path, URL, message id). */

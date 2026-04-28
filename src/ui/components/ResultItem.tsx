@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
 import React, { type FC } from 'react';
-import type { SearchResult } from '../../core/store.ts';
+import type { SearchResult } from '../../core/store.js';
 
 const SOURCE_ICONS: Record<string, string> = {
   fs: '📄',

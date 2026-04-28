@@ -14,11 +14,11 @@
  *   }
  */
 
-import type { Document, IngestContext, Plugin } from '../types.ts';
-import { readChromiumHistory } from './chromium.ts';
-import { type BrowserInfo, discoverBrowsers, findBrowser } from './discovery.ts';
-import { readSafariHistory } from './safari.ts';
-import type { BrowserHistoryEntry, ReadOptions } from './types.ts';
+import type { Document, IngestContext, Plugin } from '../types.js';
+import { readChromiumHistory } from './chromium.js';
+import { type BrowserInfo, discoverBrowsers, findBrowser } from './discovery.js';
+import { readSafariHistory } from './safari.js';
+import type { BrowserHistoryEntry, ReadOptions } from './types.js';
 
 const DEFAULTS: ReadOptions = {
   maxAgeDays: 180,

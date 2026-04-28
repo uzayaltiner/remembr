@@ -15,8 +15,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { glob } from 'glob';
-import type { Document, IngestContext, Plugin } from '../types.ts';
-import { parsePdf } from './parser.ts';
+import type { Document, IngestContext, Plugin } from '../types.js';
+import { parsePdf } from './parser.js';
 
 const NAME = 'pdf';
 const GLOB_PATTERN = '**/*.pdf';

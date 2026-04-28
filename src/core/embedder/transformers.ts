@@ -21,7 +21,7 @@ import {
   type ProgressCallback,
   pipeline,
 } from '@huggingface/transformers';
-import { type EmbedTask, type Embedder, EmbedderError } from './types.ts';
+import { type EmbedTask, type Embedder, EmbedderError } from './types.js';
 
 /**
  * ONNX weight precision. Quantized variants are ~2-4× faster on Apple

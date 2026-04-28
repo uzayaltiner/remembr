@@ -5,8 +5,8 @@
  * prefixes for nomic-style models) behind the Embedder contract.
  */
 
-import { OllamaClient, OllamaUnreachableError } from '../ollama.ts';
-import { type EmbedTask, type Embedder, EmbedderError } from './types.ts';
+import { OllamaClient, OllamaUnreachableError } from '../ollama.js';
+import { type EmbedTask, type Embedder, EmbedderError } from './types.js';
 
 export interface OllamaEmbedderOptions {
   host: string;

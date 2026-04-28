@@ -7,10 +7,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { PATHS } from '../../config/paths.ts';
-import { readConfig } from '../../config/settings.ts';
-import { type Embedder, createEmbedder } from '../../core/embedder/index.ts';
-import { type SearchResult, Store } from '../../core/store.ts';
+import { PATHS } from '../../config/paths.js';
+import { readConfig } from '../../config/settings.js';
+import { type Embedder, createEmbedder } from '../../core/embedder/index.js';
+import { type SearchResult, Store } from '../../core/store.js';
 
 const DEBOUNCE_MS = 250;
 

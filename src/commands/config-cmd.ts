@@ -8,8 +8,8 @@
  */
 
 import { rmSync } from 'node:fs';
-import { PATHS } from '../config/paths.ts';
-import { configExists, readConfig, writeConfig } from '../config/settings.ts';
+import { PATHS } from '../config/paths.js';
+import { configExists, readConfig, writeConfig } from '../config/settings.js';
 
 export function runConfigShow(): void {
   if (!configExists()) {

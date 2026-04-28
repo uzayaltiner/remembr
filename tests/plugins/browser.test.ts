@@ -1,5 +1,5 @@
-import { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import Database from 'better-sqlite3';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,12 +7,12 @@ import {
   chromiumMicrosToUnixMs,
   readChromiumHistory,
   unixMsToChromiumMicros,
-} from '../../src/plugins/browser/chromium.ts';
+} from '../../src/plugins/browser/chromium.js';
 import {
   macSecondsToUnixMs,
   readSafariHistory,
   unixMsToMacSeconds,
-} from '../../src/plugins/browser/safari.ts';
+} from '../../src/plugins/browser/safari.js';
 
 describe('Chromium epoch helpers', () => {
   it('round-trips a unix ms timestamp', () => {

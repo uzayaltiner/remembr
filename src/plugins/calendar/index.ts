@@ -14,11 +14,11 @@
  * Requires Full Disk Access for the terminal, just like Apple Notes.
  */
 
-import { Database } from 'bun:sqlite';
 import { copyFileSync, existsSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Document, IngestContext, Plugin } from '../types.ts';
+import Database from 'better-sqlite3';
+import type { Document, IngestContext, Plugin } from '../types.js';
 
 const NAME = 'calendar';
 
@@ -130,10 +130,10 @@ interface CalendarRow {
   calendarTitle: string | null;
 }
 
-function detectSchemaVariant(db: Database): SchemaVariant {
-  const rows = db
-    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'")
-    .all();
+function detectSchemaVariant(db: Database.Database): SchemaVariant {
+  const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{
+    name: string;
+  }>;
   const names = new Set(rows.map((r) => r.name));
 
   if (names.has('CalendarItem')) return 'modern';
@@ -141,7 +141,7 @@ function detectSchemaVariant(db: Database): SchemaVariant {
   return 'unknown';
 }
 
-function readEvents(db: Database, variant: SchemaVariant): CalendarRow[] {
+function readEvents(db: Database.Database, variant: SchemaVariant): CalendarRow[] {
   if (variant === 'modern') return readModern(db);
   if (variant === 'core-data') return readCoreData(db);
   throw new Error('Unknown schema — no recognised tables found.');
@@ -158,7 +158,7 @@ interface ModernRow {
   location: string | null;
 }
 
-function readModern(db: Database): CalendarRow[] {
+function readModern(db: Database.Database): CalendarRow[] {
   // Apple has shuffled CalendarItem columns repeatedly (2018-2025).
   // Strategy: probe what exists, build the SELECT + WHERE around that.
   const ciCols = tableColumns(db, 'CalendarItem');
@@ -207,7 +207,7 @@ function readModern(db: Database): CalendarRow[] {
     ORDER BY ci.start_date DESC
   `;
 
-  const rows = db.query<ModernRow, []>(sql).all();
+  const rows = db.prepare(sql).all() as ModernRow[];
 
   return rows.map((r, i) => ({
     uid: r.external_id ?? `modern-${i}`,
@@ -221,13 +221,13 @@ function readModern(db: Database): CalendarRow[] {
   }));
 }
 
-function tableColumns(db: Database, tableName: string): Set<string> {
+function tableColumns(db: Database.Database, tableName: string): Set<string> {
   // PRAGMA table_info returns one row per column with a 'name' field.
   // If the table doesn't exist we get an empty result instead of an error.
   try {
-    const rows = db
-      .query<{ name: string }, []>(`PRAGMA table_info("${tableName.replace(/"/g, '')}")`)
-      .all();
+    const rows = db.prepare(`PRAGMA table_info("${tableName.replace(/"/g, '')}")`).all() as Array<{
+      name: string;
+    }>;
     return new Set(rows.map((r) => r.name));
   } catch {
     return new Set();
@@ -252,12 +252,12 @@ interface CoreDataRow {
   ZLOCATION: string | null;
 }
 
-function readCoreData(db: Database): CalendarRow[] {
+function readCoreData(db: Database.Database): CalendarRow[] {
   // Z-prefix Core Data schema. We don't always know what the calendar/location
   // joins look like across versions, so query a flat projection and degrade
   // gracefully if some columns are missing.
   const rows = db
-    .query<CoreDataRow, []>(`
+    .prepare(`
       SELECT
         ZEXTERNAL_ID,
         ZSUMMARY,
@@ -270,7 +270,7 @@ function readCoreData(db: Database): CalendarRow[] {
       FROM ZEVENTITEM
       ORDER BY ZSTARTDATE DESC
     `)
-    .all();
+    .all() as CoreDataRow[];
 
   return rows.map((r, i) => ({
     uid: r.ZEXTERNAL_ID ?? `core-data-${i}`,

@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'bun:test';
-import { type BrainConfig, DEFAULT_CONFIG } from '../../src/config/settings.ts';
-import { Registry, getPluginConfig, setPluginEnabled } from '../../src/plugins/registry.ts';
-import type { Document, IngestContext, Plugin } from '../../src/plugins/types.ts';
+import { describe, expect, it } from 'vitest';
+import { type BrainConfig, DEFAULT_CONFIG } from '../../src/config/settings.js';
+import { Registry, getPluginConfig, setPluginEnabled } from '../../src/plugins/registry.js';
+import type { Document, IngestContext, Plugin } from '../../src/plugins/types.js';
 
 function makePlugin(overrides: Partial<Plugin> = {}): Plugin {
   return {

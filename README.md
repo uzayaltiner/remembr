@@ -3,7 +3,7 @@
 > **Recall anything across your tools.** A local-first semantic-search MCP server + CLI that gives Claude Code (and any MCP client) memory beyond your filesystem.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Bun](https://img.shields.io/badge/runtime-Bun-orange.svg)](https://bun.sh)
+[![Node](https://img.shields.io/badge/runtime-Node%20%E2%89%A5%2020-339933.svg)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/protocol-MCP-9d4edd.svg)](https://modelcontextprotocol.io)
 
 ```
@@ -43,15 +43,10 @@ Claude Code is great inside your filesystem. But the context you actually need l
 
 ## Quick start
 
-> Requires macOS, [Bun ≥ 1.1](https://bun.sh), and `brew install sqlite` (Bun's bundled SQLite can't load extensions).
+> Requires macOS (Linux experimental) and [Node.js ≥ 20](https://nodejs.org).
 
 ```bash
-git clone https://github.com/uzayaltiner/remembr.git
-cd remembr
-bun install
-
-# Add a symlink so `remembr` works from anywhere
-ln -s "$(pwd)/bin/remembr" ~/.local/bin/remembr
+npm install -g remembr
 
 # One-time setup
 remembr init
