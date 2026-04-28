@@ -20,9 +20,15 @@ done
 PROJECT_ROOT="$(cd -P "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 
 if ! command -v bun >/dev/null 2>&1; then
-  echo "✗ bun is required for development." >&2
+  echo "✗ bun is required to run remembr." >&2
   echo "  Install: curl -fsSL https://bun.sh/install | bash" >&2
   exit 1
 fi
+
+# Setting NODE_ENV=production tells Ink to skip its react-devtools-core
+# import branch — that package is an optional dependency and won't be
+# installed in production. Without this the CLI throws ERR_MODULE_NOT_FOUND
+# the first time the TUI tries to render.
+export NODE_ENV="${NODE_ENV:-production}"
 
 exec bun run "$PROJECT_ROOT/src/cli.tsx" "$@"
