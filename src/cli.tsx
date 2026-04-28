@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { runConfigModel, runConfigProvider, runConfigShow } from './commands/config-cmd.ts';
-import { runIndex, runWatch } from './commands/index-cmd.ts';
+import { IndexError, runIndex, runWatch } from './commands/index-cmd.ts';
 import { runInit } from './commands/init.ts';
 import { runPathsAdd, runPathsList, runPathsRemove } from './commands/paths-cmd.ts';
 import { runPluginDisable, runPluginEnable, runPluginsList } from './commands/plugins.ts';
@@ -97,10 +97,20 @@ program
         maxAgeDays: opts.maxAgeDays,
         reset: opts.reset,
       };
-      if (opts.watch) {
-        await runWatch(pluginName, indexOptions);
-      } else {
-        await runIndex(pluginName, indexOptions);
+      try {
+        if (opts.watch) {
+          await runWatch(pluginName, indexOptions);
+        } else {
+          await runIndex(pluginName, indexOptions);
+        }
+      } catch (err) {
+        if (err instanceof IndexError) {
+          for (const line of err.message.split('\n')) {
+            console.error(line.startsWith('✗') ? line : `✗ ${line}`);
+          }
+          process.exit(1);
+        }
+        throw err;
       }
     },
   );

@@ -29,17 +29,23 @@ export interface IndexOptions {
   reset?: boolean;
 }
 
+export class IndexError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IndexError';
+  }
+}
+
 export async function runIndex(pluginName: string, options: IndexOptions = {}): Promise<void> {
   if (!configExists()) {
-    console.error("✗ Not initialized. Run 'remembr init' first.");
-    process.exit(1);
+    throw new IndexError("Not initialized. Run 'remembr init' first.");
   }
 
   const plugin = registry.get(pluginName);
   if (!plugin) {
-    console.error(`✗ Unknown plugin: '${pluginName}'`);
-    console.error("  Run 'remembr plugins list' to see available plugins.");
-    process.exit(1);
+    throw new IndexError(
+      `Unknown plugin: '${pluginName}'\n  Run 'remembr plugins list' to see available plugins.`,
+    );
   }
 
   let config = readConfig();
@@ -58,11 +64,9 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
     await embedder.init();
   } catch (err) {
     if (err instanceof EmbedderError) {
-      console.error(`✗ Embedder error: ${err.message}`);
-    } else {
-      console.error('✗ Embedder error:', err instanceof Error ? err.message : err);
+      throw new IndexError(`Embedder error: ${err.message}`);
     }
-    process.exit(1);
+    throw new IndexError(`Embedder error: ${err instanceof Error ? err.message : String(err)}`);
   }
   const dims = embedder.dimensions;
 
@@ -165,13 +169,10 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
       } catch (err) {
         progress.finish();
         const message = err instanceof Error ? err.message : String(err);
-        // Plugin emitted a fatal error — print it cleanly without a stack trace.
-        for (const line of message.split('\n')) {
-          console.error(line.startsWith('✗') ? line : `✗ ${line}`);
-        }
         log.error('plugin ingest failed', { plugin: pluginName, error: message });
-        store.close();
-        process.exit(1);
+        // Bubble the message up so callers (CLI handler / sync) decide what
+        // to do — exit with a clean message, or skip and move on.
+        throw new IndexError(message);
       }
       if (next.done) break;
       const doc = next.value;

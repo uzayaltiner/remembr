@@ -1,12 +1,20 @@
 /**
  * `remembr sync [--watch]` — index every enabled plugin in one go.
  *
- * Reads each plugin's enabled flag from config and runs them sequentially.
- * No --path or per-plugin flags here on purpose: paths must be configured
- * via `remembr paths add` so users don't have to keep typing them.
+ * Default behaviour: every registered plugin is enabled out of the box, so
+ * `remembr sync` immediately tries to ingest from all of them. Plugins that
+ * can't run (no paths configured, TCC blocked, source app not installed,
+ * etc.) are skipped with a clear message so the run as a whole still
+ * succeeds. Disable the noisy ones with `remembr plugins disable <name>`.
  */
 
-import { configExists, readConfig } from '../config/settings.ts';
+import {
+  type BrainConfig,
+  configExists,
+  mergeRegisteredPlugins,
+  readConfig,
+  writeConfig,
+} from '../config/settings.ts';
 import { registry } from '../plugins/registry.ts';
 import { runIndex, runWatch } from './index-cmd.ts';
 
@@ -14,81 +22,145 @@ export interface SyncOptions {
   watch?: boolean;
 }
 
+interface PluginOutcome {
+  name: string;
+  status: 'indexed' | 'skipped' | 'failed';
+  reason?: string;
+}
+
+const PATH_BASED_PLUGINS = new Set(['fs', 'pdf', 'slack']);
+
 export async function runSync(options: SyncOptions = {}): Promise<void> {
   if (!configExists()) {
     console.error("✗ Not initialized. Run 'remembr init' first.");
     process.exit(1);
   }
 
-  const config = readConfig();
-  const enabledPlugins = Object.entries(config.plugins)
-    .filter(([, cfg]) => cfg.enabled)
-    .map(([name]) => name)
-    .filter((name) => registry.has(name));
+  // Auto-add slots for any newly-registered plugin so users see them
+  // (and can disable them) on the next run.
+  const registered = registry.list();
+  let config = readConfig();
+  const merge = mergeRegisteredPlugins(
+    config,
+    registered.map((p) => p.name),
+  );
+  if (merge.changed) {
+    writeConfig(merge.config);
+    config = merge.config;
+  }
+
+  const enabledPlugins = registered.filter((p) => config.plugins[p.name]?.enabled !== false);
 
   if (enabledPlugins.length === 0) {
     console.log('No enabled plugins.');
-    console.log('');
-    console.log('Get started:');
-    console.log('  remembr plugins enable browser              # browser history');
-    console.log('  remembr paths add markdown ~/Documents/Notes  # auto-enables markdown');
-    console.log('  remembr paths add pdf ~/Documents/Books       # auto-enables pdf');
+    console.log('  Re-enable: remembr plugins enable <name>');
     return;
   }
 
   if (options.watch) {
-    // Watch only makes sense for path-based plugins. Index path-less ones first
-    // (browser), then keep the path-based watch loop alive.
-    const pathBased = enabledPlugins.filter((name) => Array.isArray(config.plugins[name]?.paths));
-    const pathLess = enabledPlugins.filter((name) => !Array.isArray(config.plugins[name]?.paths));
-
-    for (const name of pathLess) {
-      console.log(`▸ ${name}`);
-      await runIndex(name, {});
-      console.log('');
-    }
-
-    if (pathBased.length === 0) {
-      console.log(
-        "ℹ No path-based plugins to watch. Use 'remembr sync' (without --watch) for browser-only setups.",
-      );
-      return;
-    }
-
-    if (pathBased.length === 1) {
-      const name = pathBased[0];
-      if (!name) return;
-      console.log(`▸ Watching ${name}`);
-      const slot = config.plugins[name];
-      const paths = (slot?.paths as string[] | undefined) ?? [];
-      await runWatch(name, { path: paths });
-      return;
-    }
-
-    // Multiple path-based plugins + watch: do an initial sync of all, then
-    // watch only the first one. Watching multiple roots concurrently is
-    // possible but adds complexity we'll defer until we need it.
-    for (const name of pathBased) {
-      console.log(`▸ ${name}`);
-      await runIndex(name, {});
-      console.log('');
-    }
-    const first = pathBased[0];
-    if (!first) return;
-    console.log(`ℹ Watching '${first}' (multi-plugin watch coming later).`);
-    const slot = config.plugins[first];
-    const paths = (slot?.paths as string[] | undefined) ?? [];
-    await runWatch(first, { path: paths });
-    return;
+    return runWatchSync(
+      enabledPlugins.map((p) => p.name),
+      config,
+    );
   }
 
-  for (const name of enabledPlugins) {
-    console.log(`▸ ${name}`);
-    await runIndex(name, {});
+  const outcomes: PluginOutcome[] = [];
+
+  for (const plugin of enabledPlugins) {
+    console.log(`▸ ${plugin.name}`);
+
+    // Skip plugins that explicitly say they aren't usable on this system —
+    // saves the user a confusing error mid-pipeline.
+    let available = true;
+    try {
+      available = await plugin.isAvailable();
+    } catch {
+      available = false;
+    }
+    if (!available) {
+      console.log('  ⏭ skipped: not available on this system');
+      console.log('');
+      outcomes.push({ name: plugin.name, status: 'skipped', reason: 'unavailable' });
+      continue;
+    }
+
+    try {
+      await runIndex(plugin.name, {});
+      outcomes.push({ name: plugin.name, status: 'indexed' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const reason = friendlyReason(message);
+      for (const line of message.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed.length === 0) continue;
+        const prefix = trimmed.startsWith('✗') || trimmed.startsWith('⚠') ? '  ' : '  ✗ ';
+        console.log(`${prefix}${trimmed}`);
+      }
+      outcomes.push({
+        name: plugin.name,
+        // "no paths" / "not authenticated" are user-config issues, not crashes.
+        status: reason === 'config' ? 'skipped' : 'failed',
+        reason,
+      });
+    }
+
     console.log('');
   }
 
-  console.log(
-    `✓ Sync complete (${enabledPlugins.length} plugin${enabledPlugins.length === 1 ? '' : 's'})`,
-  );
+  printSummary(outcomes);
+}
+
+async function runWatchSync(enabledNames: string[], config: BrainConfig): Promise<void> {
+  // Initial sync of everything, then attach the watcher to a path-based
+  // plugin (only those make sense to watch live).
+  const watchable = enabledNames.find((name) => {
+    if (!PATH_BASED_PLUGINS.has(name)) return false;
+    const paths = config.plugins[name]?.paths as string[] | undefined;
+    return Array.isArray(paths) && paths.length > 0;
+  });
+
+  for (const name of enabledNames) {
+    console.log(`▸ ${name}`);
+    try {
+      await runIndex(name, {});
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(`  ⏭ ${message.split('\n')[0]}`);
+    }
+    console.log('');
+  }
+
+  if (!watchable) {
+    console.log("ℹ No watchable plugin (need 'fs', 'pdf', or 'slack' with paths).");
+    return;
+  }
+
+  console.log(`▸ Watching ${watchable}`);
+  const paths = (config.plugins[watchable]?.paths as string[] | undefined) ?? [];
+  await runWatch(watchable, { path: paths });
+}
+
+function friendlyReason(message: string): string {
+  if (/no paths configured/i.test(message)) return 'config';
+  if (/not authenticated/i.test(message)) return 'config';
+  if (/full disk access/i.test(message)) return 'tcc';
+  if (/not found/i.test(message)) return 'unavailable';
+  if (/schema mismatch/i.test(message)) return 'schema';
+  return 'error';
+}
+
+function printSummary(outcomes: PluginOutcome[]): void {
+  const indexed = outcomes.filter((o) => o.status === 'indexed').length;
+  const skipped = outcomes.filter((o) => o.status === 'skipped').length;
+  const failed = outcomes.filter((o) => o.status === 'failed').length;
+
+  if (failed === 0 && skipped === 0) {
+    console.log(`✓ Sync complete (${indexed} plugin${indexed === 1 ? '' : 's'})`);
+    return;
+  }
+
+  console.log(`Sync complete: ${indexed} indexed, ${skipped} skipped, ${failed} failed.`);
+  if (skipped > 0) {
+    console.log("  Tip: 'remembr plugins disable <name>' silences plugins you don't use.");
+  }
 }

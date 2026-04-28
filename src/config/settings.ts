@@ -36,16 +36,39 @@ export const DEFAULT_CONFIG: BrainConfig = {
     model: 'Xenova/multilingual-e5-small',
   },
   plugins: {
-    fs: { enabled: false },
-    browser: { enabled: false, maxAgeDays: 180, minVisitCount: 1 },
-    pdf: { enabled: false },
-    calendar: { enabled: false },
-    github: { enabled: false },
-    slack: { enabled: false },
-    mail: { enabled: false },
-    'apple-notes': { enabled: false },
+    fs: { enabled: true },
+    browser: { enabled: true, maxAgeDays: 180, minVisitCount: 1 },
+    pdf: { enabled: true },
+    calendar: { enabled: true },
+    github: { enabled: true },
+    slack: { enabled: true },
+    mail: { enabled: true },
+    'apple-notes': { enabled: true },
   },
 };
+
+/**
+ * Ensure every registered plugin has a slot in the config so users can opt
+ * out of new plugins after a remembr upgrade. Keeps existing values
+ * (notably user-set `enabled: false`) untouched.
+ *
+ * Returns the (possibly upgraded) config + a flag telling the caller
+ * whether anything changed, so we only rewrite the file when necessary.
+ */
+export function mergeRegisteredPlugins(
+  config: BrainConfig,
+  registeredNames: string[],
+): { config: BrainConfig; changed: boolean } {
+  let changed = false;
+  const plugins = { ...config.plugins };
+  for (const name of registeredNames) {
+    if (!plugins[name]) {
+      plugins[name] = { enabled: true };
+      changed = true;
+    }
+  }
+  return { config: changed ? { ...config, plugins } : config, changed };
+}
 
 /** Ensure ~/.remembr/ and subdirectories exist. Idempotent. */
 export function ensureHome(): void {
