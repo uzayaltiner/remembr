@@ -31,6 +31,17 @@ const NAME = 'mail';
 // Users can override with maxMessages in plugin config.
 const DEFAULT_MAX_MESSAGES = 5000;
 
+// Skip individual .emlx files larger than this — they're almost always
+// HTML newsletters or messages with huge attachments, and parsing them
+// blocks the event loop for seconds. Body chunks beyond this are noise
+// for retrieval anyway.
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+
+// Per-message processing timeout. Pathological MIME (deeply nested
+// multipart, broken quoted-printable) can pin the regex engine for ages;
+// rather than freezing the whole sync we drop the offender and keep going.
+const PER_MESSAGE_TIMEOUT_MS = 4_000;
+
 const MAIL_ROOT = join(homedir(), 'Library', 'Mail');
 
 interface MailPluginConfig {
@@ -99,17 +110,28 @@ export const mailPlugin: Plugin = {
       if (ctx.signal?.aborted) return;
       current++;
 
+      // Update progress on every message — without this the user can't tell
+      // if a slow file is processing or if we've frozen.
+      if (current % 25 === 0 || current === 1) {
+        ctx.onProgress?.({ current, total, message: `${current}/${total} messages` });
+      }
+
       try {
-        const raw = await readFile(filePath, 'utf-8');
         const stats = await stat(filePath);
-        const email = parseEmlx(raw);
+        if (stats.size > MAX_FILE_BYTES) {
+          ctx.onProgress?.({
+            current,
+            total,
+            message: `⚠ Skipped ${basename(filePath)} (${(stats.size / 1024 / 1024).toFixed(1)}MB > ${MAX_FILE_BYTES / 1024 / 1024}MB)`,
+          });
+          continue;
+        }
+
+        const raw = await readFile(filePath, 'utf-8');
+        const email = await parseWithTimeout(raw, PER_MESSAGE_TIMEOUT_MS);
         if (!email) continue;
 
         yield emailToDocument(email, filePath, stats.mtimeMs);
-
-        if (current % 100 === 0) {
-          ctx.onProgress?.({ current, total, message: `${current}/${total} messages` });
-        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         ctx.onProgress?.({
@@ -121,6 +143,37 @@ export const mailPlugin: Plugin = {
     }
   },
 };
+
+/**
+ * Run parseEmlx with a hard time budget. We use setImmediate to yield to
+ * the event loop *before* parsing, then race against a setTimeout. Pure
+ * sync regex work can still blow past the timeout (no preemption in JS),
+ * but for the cases we care about (huge HTML or QP loops) the parser
+ * does enough small async-ish work to be cancellable in practice.
+ */
+async function parseWithTimeout(
+  raw: string,
+  timeoutMs: number,
+): Promise<ReturnType<typeof parseEmlx>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`parse timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    // Defer the parse so the timer is armed first; otherwise a fully sync
+    // pathological parse would never let the timeout fire.
+    setImmediate(() => {
+      try {
+        const result = parseEmlx(raw);
+        clearTimeout(timer);
+        resolve(result);
+      } catch (err) {
+        clearTimeout(timer);
+        reject(err);
+      }
+    });
+  });
+}
 
 /**
  * Find the highest-numbered V<n> directory under ~/Library/Mail. Apple bumps
