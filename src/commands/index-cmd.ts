@@ -140,19 +140,41 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
 
   const progress = new Progress();
 
+  let pluginIterator: AsyncIterator<Document> | null = null;
+
   try {
-    for await (const doc of plugin.ingest({
-      config: ingestConfig,
-      onProgress: ({ current, total, message }) => {
-        if (!message) return;
-        // Lines that start with ⚠ are warnings — print them above the progress bar
-        if (message.startsWith('⚠')) {
-          progress.log(message);
-        } else {
-          progress.update(current, total, message);
+    pluginIterator = plugin
+      .ingest({
+        config: ingestConfig,
+        onProgress: ({ current, total, message }) => {
+          if (!message) return;
+          // Lines that start with ⚠ are warnings — print above the progress bar
+          if (message.startsWith('⚠')) {
+            progress.log(message);
+          } else {
+            progress.update(current, total, message);
+          }
+        },
+      })
+      [Symbol.asyncIterator]();
+
+    while (true) {
+      let next: IteratorResult<Document>;
+      try {
+        next = await pluginIterator.next();
+      } catch (err) {
+        progress.finish();
+        const message = err instanceof Error ? err.message : String(err);
+        // Plugin emitted a fatal error — print it cleanly without a stack trace.
+        for (const line of message.split('\n')) {
+          console.error(line.startsWith('✗') ? line : `✗ ${line}`);
         }
-      },
-    })) {
+        log.error('plugin ingest failed', { plugin: pluginName, error: message });
+        store.close();
+        process.exit(1);
+      }
+      if (next.done) break;
+      const doc = next.value;
       seenDocumentIds.add(doc.id);
 
       // Decide once per document whether to index or skip.

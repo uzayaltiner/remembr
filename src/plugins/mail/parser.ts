@@ -1,16 +1,17 @@
 /**
- * Minimal mbox + RFC 822 email parser.
+ * .emlx parser (Apple Mail's per-message format).
  *
- * mbox format: messages separated by lines starting with `From `. Each
- * message has headers (until first blank line), then body. Headers can be
- * folded across multiple lines (continuation lines start with whitespace).
+ * Layout:
+ *   <byte_count>\n              ← length of the RFC 822 portion that follows
+ *   <RFC 822 message>\n
+ *   <Apple property-list metadata>   ← optional, ignored
  *
- * We extract: From, To, Cc, Subject, Date, Message-ID, plus a plain-text
- * body. Multipart MIME is partially handled — we pick the first text/plain
- * part and skip attachments. Quoted-printable / base64 bodies are decoded
- * for common cases.
+ * Headers can be folded across multiple lines (continuation lines start
+ * with whitespace). Bodies may be multipart MIME with quoted-printable or
+ * base64 encoded parts. We pick the first text/plain part, fall back to
+ * stripping HTML, otherwise pass the body through.
  *
- * Goal: good enough for retrieval, not a 100% MIME conformant parser.
+ * Goal: good enough for retrieval, not 100% MIME conformant.
  */
 
 export interface ParsedEmail {
@@ -19,42 +20,34 @@ export interface ParsedEmail {
   from: string | null;
   to: string[];
   cc: string[];
-  /** Unix epoch ms, parsed from Date header. */
+  /** Unix epoch ms, parsed from the Date header. */
   date: number | null;
   body: string;
 }
 
-const FROM_LINE = /^From .+$/m;
-
-export function parseMbox(raw: string): ParsedEmail[] {
-  const messages = splitMbox(raw);
-  return messages.map(parseMessage).filter((m) => m.subject || m.body);
-}
-
-function splitMbox(raw: string): string[] {
-  // Each mbox message starts at a "From ..." line at column 0.
-  const out: string[] = [];
-  const lines = raw.split('\n');
-  let buffer: string[] = [];
-
-  for (const line of lines) {
-    if (FROM_LINE.test(line) && buffer.length > 0) {
-      out.push(buffer.join('\n'));
-      buffer = [line];
-    } else {
-      buffer.push(line);
-    }
+export function parseEmlx(raw: string): ParsedEmail | null {
+  // Strip the leading byte-count line. If it's present we trust it and
+  // slice; if not (some exports omit it) we just treat the whole input as
+  // RFC 822.
+  const firstLineEnd = raw.indexOf('\n');
+  if (firstLineEnd < 0) return null;
+  const firstLine = raw.slice(0, firstLineEnd).trim();
+  let rfc822: string;
+  if (/^\d+$/.test(firstLine)) {
+    const len = Number(firstLine);
+    rfc822 = raw.slice(firstLineEnd + 1, firstLineEnd + 1 + len);
+  } else {
+    rfc822 = raw;
   }
-  if (buffer.length > 0) out.push(buffer.join('\n'));
 
-  // Drop the leading "From " line on each message
-  return out.map((msg) => msg.replace(/^From .+\n/, ''));
+  return parseMessage(rfc822);
 }
 
-function parseMessage(raw: string): ParsedEmail {
+function parseMessage(raw: string): ParsedEmail | null {
   const sep = raw.indexOf('\n\n');
   const headerBlock = sep >= 0 ? raw.slice(0, sep) : raw;
   const bodyBlock = sep >= 0 ? raw.slice(sep + 2) : '';
+  if (headerBlock.length === 0) return null;
 
   const headers = parseHeaders(headerBlock);
 
@@ -121,8 +114,9 @@ function parseDate(value: string | undefined): number | null {
 }
 
 /**
- * Decode RFC 2047 encoded-words: =?charset?B?base64?= or =?charset?Q?qp?=
- * Used in headers to carry non-ASCII (e.g. Turkish characters in Subject).
+ * RFC 2047 encoded-words: =?charset?B?base64?= or =?charset?Q?qp?=
+ * Used in headers to carry non-ASCII characters (e.g. Turkish diacritics
+ * in Subject:).
  */
 function decodeMime(value: string): string {
   return value.replace(
@@ -141,7 +135,6 @@ function decodeMime(value: string): string {
 }
 
 function decodeQuotedPrintable(input: string): string {
-  // Decode =XX hex escapes; ignore soft line breaks (=\n)
   const buf = Buffer.from(
     input
       .replace(/=\r?\n/g, '')
@@ -154,12 +147,11 @@ function decodeQuotedPrintable(input: string): string {
 }
 
 /**
- * Extract a useful text body from a possibly-multipart message.
+ * Pull a useful text body out of a possibly-multipart message.
  *
- * For multipart/alternative or multipart/mixed, we walk the first level of
- * parts and pick the first text/plain. text/html-only emails get their HTML
- * stripped to text. This handles the vast majority of real mail; nested
- * multipart trees aren't fully recursed.
+ * For multipart/* we walk the first level of parts and prefer text/plain
+ * over text/html. Nested multiparts aren't fully recursed — that's
+ * uncommon enough that the cost isn't worth it for retrieval purposes.
  */
 function extractTextBody(body: string, contentType: string, encoding: string): string {
   const ct = contentType.toLowerCase();
