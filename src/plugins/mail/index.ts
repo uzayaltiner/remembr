@@ -114,43 +114,68 @@ export const mailPlugin: Plugin = {
       message: `Found ${total} messages under ${basename(versionDir)}`,
     });
 
-    for (const filePath of files) {
+    // Read CONCURRENCY files in parallel; APFS can serve multiple small
+    // reads at once, and parseWithTimeout schedules its work via
+    // setImmediate so several parses can interleave with the I/O. Yields
+    // are still ordered (we await Promise.all on each batch) so the
+    // downstream embedding pipeline keeps its document order.
+    for (let i = 0; i < files.length; i += FILE_READ_CONCURRENCY) {
       if (ctx.signal?.aborted) return;
-      current++;
+      const batch = files.slice(i, i + FILE_READ_CONCURRENCY);
+      const results = await Promise.all(batch.map((p) => readOne(p)));
 
-      // Update progress on every message — without this the user can't tell
-      // if a slow file is processing or if we've frozen.
-      if (current % 25 === 0 || current === 1) {
-        ctx.onProgress?.({ current, total, message: `${current}/${total} messages` });
-      }
+      for (const result of results) {
+        if (ctx.signal?.aborted) return;
+        current++;
 
-      try {
-        const stats = await stat(filePath);
-        if (stats.size > MAX_FILE_BYTES) {
+        if (result.kind === 'skip') {
           ctx.onProgress?.({
             current,
             total,
-            message: `⚠ Skipped ${basename(filePath)} (${(stats.size / 1024 / 1024).toFixed(1)}MB > ${MAX_FILE_BYTES / 1024 / 1024}MB)`,
+            message: `⚠ Skipped ${basename(result.filePath)}: ${result.reason}`,
           });
           continue;
         }
+        if (result.kind === 'empty') continue;
 
-        const raw = await readFile(filePath, 'utf-8');
-        const email = await parseWithTimeout(raw, PER_MESSAGE_TIMEOUT_MS);
-        if (!email) continue;
+        yield emailToDocument(result.email, result.filePath, result.mtimeMs);
+      }
 
-        yield emailToDocument(email, filePath, stats.mtimeMs);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        ctx.onProgress?.({
-          current,
-          total,
-          message: `⚠ Skipped ${basename(filePath)}: ${message}`,
-        });
+      if (current % 25 < FILE_READ_CONCURRENCY || i === 0) {
+        ctx.onProgress?.({ current, total, message: `${current}/${total} messages` });
       }
     }
   },
 };
+
+const FILE_READ_CONCURRENCY = 4;
+
+type ReadResult =
+  | { kind: 'ok'; email: ParsedEmail; filePath: string; mtimeMs: number }
+  | { kind: 'skip'; filePath: string; reason: string }
+  | { kind: 'empty'; filePath: string };
+
+async function readOne(filePath: string): Promise<ReadResult> {
+  try {
+    const stats = await stat(filePath);
+    if (stats.size > MAX_FILE_BYTES) {
+      return {
+        kind: 'skip',
+        filePath,
+        reason: `${(stats.size / 1024 / 1024).toFixed(1)}MB > ${MAX_FILE_BYTES / 1024 / 1024}MB`,
+      };
+    }
+
+    const raw = await readFile(filePath, 'utf-8');
+    const email = await parseWithTimeout(raw, PER_MESSAGE_TIMEOUT_MS);
+    if (!email) return { kind: 'empty', filePath };
+
+    return { kind: 'ok', email, filePath, mtimeMs: stats.mtimeMs };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return { kind: 'skip', filePath, reason };
+  }
+}
 
 /**
  * Run parseEmlx with a hard time budget. We use setImmediate to yield to

@@ -16,7 +16,11 @@ import type { Document } from '../plugins/types.ts';
 import { log } from '../utils/logger.ts';
 import { Progress } from '../utils/progress.ts';
 
-const BATCH_SIZE = 16; // chunks per embed call
+// 32 is a sweet spot for Transformers.js on M-series: the model amortises
+// fixed overhead (tokenize call, ONNX session entry) over more inputs,
+// and the GPU/ANE can handle the larger batch in a single forward pass.
+// Anything larger starts running out of memory on bigger models.
+const BATCH_SIZE = 32;
 
 export interface IndexOptions {
   /** Override: path(s) for plugins that take paths (e.g. markdown). */
