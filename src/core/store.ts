@@ -123,6 +123,11 @@ export class Store {
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA synchronous = NORMAL');
     this.db.exec('PRAGMA foreign_keys = ON');
+    // Wait up to 10s for another writer (e.g. the MCP server running in
+    // parallel) to release a lock instead of failing immediately with
+    // SQLITE_BUSY. Index runs are bursty enough that this almost always
+    // succeeds inside the window.
+    this.db.exec('PRAGMA busy_timeout = 10000');
 
     this.db.loadExtension(sqliteVec.getLoadablePath());
 

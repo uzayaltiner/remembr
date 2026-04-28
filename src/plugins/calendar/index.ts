@@ -159,28 +159,55 @@ interface ModernRow {
 }
 
 function readModern(db: Database): CalendarRow[] {
-  // Column names mirror the schema documented at https://ciofecaforensics.com.
-  // Some installs lack the optional `Location` table — we LEFT JOIN so missing
-  // locations come back as null rather than throwing.
-  const rows = db
-    .query<ModernRow, []>(`
-      SELECT
-        ci.external_id              AS external_id,
-        ci.summary                  AS summary,
-        ci.description              AS description,
-        ci.start_date               AS start_date,
-        ci.end_date                 AS end_date,
-        ci.all_day                  AS all_day,
-        c.title                     AS calendar_title,
-        loc.title                   AS location
-      FROM CalendarItem ci
-      LEFT JOIN Calendar c   ON c.ROWID = ci.calendar_id
-      LEFT JOIN Location  loc ON loc.ROWID = ci.location_id
-      WHERE COALESCE(ci.is_pseudo, 0) = 0
-        AND COALESCE(ci.deleted, 0) = 0
-      ORDER BY ci.start_date DESC
-    `)
-    .all();
+  // Apple has shuffled CalendarItem columns repeatedly (2018-2025).
+  // Strategy: probe what exists, build the SELECT + WHERE around that.
+  const ciCols = tableColumns(db, 'CalendarItem');
+  const calCols = tableColumns(db, 'Calendar');
+  const hasLocationTable = tableColumns(db, 'Location').size > 0;
+
+  // Required columns — if these are missing the schema is too old/new to handle.
+  for (const required of ['summary', 'start_date']) {
+    if (!ciCols.has(required)) {
+      throw new Error(`required column 'CalendarItem.${required}' not found`);
+    }
+  }
+
+  const select: string[] = [
+    pickCol(ciCols, ['external_id', 'unique_identifier']) ?? 'NULL AS external_id',
+    'ci.summary AS summary',
+    ciCols.has('description') ? 'ci.description AS description' : 'NULL AS description',
+    'ci.start_date AS start_date',
+    ciCols.has('end_date') ? 'ci.end_date AS end_date' : 'NULL AS end_date',
+    ciCols.has('all_day') ? 'ci.all_day AS all_day' : '0 AS all_day',
+    calCols.has('title') ? 'c.title AS calendar_title' : 'NULL AS calendar_title',
+    hasLocationTable && ciCols.has('location_id') ? 'loc.title AS location' : 'NULL AS location',
+  ];
+
+  const joins: string[] = [];
+  if (calCols.size > 0 && ciCols.has('calendar_id')) {
+    joins.push('LEFT JOIN Calendar c ON c.ROWID = ci.calendar_id');
+  }
+  if (hasLocationTable && ciCols.has('location_id')) {
+    joins.push('LEFT JOIN Location loc ON loc.ROWID = ci.location_id');
+  }
+
+  // Soft-deleted / pseudo rows: only filter the columns that actually exist.
+  // Different macOS versions have different combinations.
+  const filters: string[] = [];
+  for (const col of ['is_pseudo', 'deleted', 'soft_deleted', 'is_orphan']) {
+    if (ciCols.has(col)) filters.push(`COALESCE(ci.${col}, 0) = 0`);
+  }
+  const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+
+  const sql = `
+    SELECT ${select.join(', ')}
+    FROM CalendarItem ci
+    ${joins.join('\n    ')}
+    ${where}
+    ORDER BY ci.start_date DESC
+  `;
+
+  const rows = db.query<ModernRow, []>(sql).all();
 
   return rows.map((r, i) => ({
     uid: r.external_id ?? `modern-${i}`,
@@ -192,6 +219,26 @@ function readModern(db: Database): CalendarRow[] {
     allDay: !!r.all_day,
     calendarTitle: r.calendar_title?.trim() || null,
   }));
+}
+
+function tableColumns(db: Database, tableName: string): Set<string> {
+  // PRAGMA table_info returns one row per column with a 'name' field.
+  // If the table doesn't exist we get an empty result instead of an error.
+  try {
+    const rows = db
+      .query<{ name: string }, []>(`PRAGMA table_info("${tableName.replace(/"/g, '')}")`)
+      .all();
+    return new Set(rows.map((r) => r.name));
+  } catch {
+    return new Set();
+  }
+}
+
+function pickCol(cols: Set<string>, candidates: string[]): string | null {
+  for (const c of candidates) {
+    if (cols.has(c)) return `ci.${c} AS external_id`;
+  }
+  return null;
 }
 
 interface CoreDataRow {
