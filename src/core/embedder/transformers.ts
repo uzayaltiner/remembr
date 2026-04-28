@@ -23,9 +23,20 @@ import {
 } from '@huggingface/transformers';
 import { type EmbedTask, type Embedder, EmbedderError } from './types.ts';
 
+/**
+ * ONNX weight precision. Quantized variants are ~2-4× faster on Apple
+ * silicon at a barely-measurable recall hit, so 'q8' is the default.
+ *  - 'fp32' / 'fp16': float weights — slower, slightly higher recall.
+ *  - 'q8' / 'int8'   : 8-bit quantized — fast, marginal quality loss.
+ *  - 'q4'           : 4-bit — fastest but more aggressive on quality.
+ */
+export type TransformersDtype = 'fp32' | 'fp16' | 'q8' | 'int8' | 'q4';
+
 export interface TransformersEmbedderOptions {
   /** HF model id, e.g. 'Xenova/multilingual-e5-small'. */
   model: string;
+  /** Weight precision; defaults to 'q8' for the speed/quality balance. */
+  dtype?: TransformersDtype;
   /** Optional progress callback for the first-run download. */
   onProgress?: ProgressCallback;
 }
@@ -56,11 +67,13 @@ export class TransformersEmbedder implements Embedder {
   private dims = 0;
   private readonly prefix: AsymmetricPrefix;
   private readonly onProgress?: ProgressCallback;
+  private readonly dtype: TransformersDtype;
 
   constructor(options: TransformersEmbedderOptions) {
     this.model = options.model;
     this.prefix = pickPrefix(options.model);
     this.onProgress = options.onProgress;
+    this.dtype = options.dtype ?? 'q8';
   }
 
   get dimensions(): number {
@@ -75,6 +88,9 @@ export class TransformersEmbedder implements Embedder {
 
     try {
       this.pipe = (await pipeline('feature-extraction', this.model, {
+        // q8 quantization typically gives 2-4× speedup on Apple silicon
+        // at <1% recall delta for retrieval-style use.
+        dtype: this.dtype,
         progress_callback: this.onProgress,
       })) as FeatureExtractionPipeline;
 
