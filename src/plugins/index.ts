@@ -14,7 +14,6 @@ import { githubPlugin } from './github/index.ts';
 import { mailPlugin } from './mail/index.ts';
 import { pdfPlugin } from './pdf/index.ts';
 import { registry } from './registry.ts';
-import { slackPlugin } from './slack/index.ts';
 
 let bootstrapped = false;
 
@@ -27,7 +26,6 @@ export function bootstrapPlugins(): void {
   registry.register(pdfPlugin);
   registry.register(calendarPlugin);
   registry.register(githubPlugin);
-  registry.register(slackPlugin);
   registry.register(mailPlugin);
   registry.register(appleNotesPlugin);
 }

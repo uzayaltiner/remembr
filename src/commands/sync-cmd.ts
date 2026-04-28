@@ -28,7 +28,7 @@ interface PluginOutcome {
   reason?: string;
 }
 
-const PATH_BASED_PLUGINS = new Set(['fs', 'pdf', 'slack']);
+const PATH_BASED_PLUGINS = new Set(['fs', 'pdf']);
 
 export async function runSync(options: SyncOptions = {}): Promise<void> {
   if (!configExists()) {
@@ -131,7 +131,7 @@ async function runWatchSync(enabledNames: string[], config: BrainConfig): Promis
   }
 
   if (!watchable) {
-    console.log("ℹ No watchable plugin (need 'fs', 'pdf', or 'slack' with paths).");
+    console.log("ℹ No watchable plugin (need 'fs' or 'pdf' with paths).");
     return;
   }
 

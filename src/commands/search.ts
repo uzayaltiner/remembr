@@ -15,7 +15,7 @@ const SOURCE_ICONS: Record<string, string> = {
   markdown: '📄', // legacy
   browser: '🌐',
   pdf: '📕',
-  slack: '💬',
+  slack: '💬', // legacy — plugin removed in 0.1, may still exist in old indexes
   calendar: '📅',
   github: '🐙',
   mail: '✉️',

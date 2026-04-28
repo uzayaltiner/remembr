@@ -7,7 +7,7 @@ const SOURCE_ICONS: Record<string, string> = {
   markdown: '📄', // legacy
   browser: '🌐',
   pdf: '📕',
-  slack: '💬',
+  slack: '💬', // legacy
   calendar: '📅',
   github: '🐙',
   mail: '✉️',

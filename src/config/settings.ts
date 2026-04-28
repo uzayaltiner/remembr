@@ -41,7 +41,6 @@ export const DEFAULT_CONFIG: BrainConfig = {
     pdf: { enabled: true },
     calendar: { enabled: true },
     github: { enabled: true },
-    slack: { enabled: true },
     mail: { enabled: true },
     'apple-notes': { enabled: true },
   },
