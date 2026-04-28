@@ -42,6 +42,14 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 // rather than freezing the whole sync we drop the offender and keep going.
 const PER_MESSAGE_TIMEOUT_MS = 4_000;
 
+// Truncate the embedded text per message. multilingual-e5-small has a
+// 512-token context — anything longer gets silently cut by the tokenizer.
+// But the tokenizer itself is O(n) on the *raw* string, so passing 50KB
+// of HTML newsletter when only the first 4KB will ever be considered is
+// pure waste. ~4000 chars ≈ 1000 tokens, comfortably above the model
+// limit, so we lose no signal but cut tokenize time dramatically.
+const MAX_EMBED_CHARS = 4000;
+
 const MAIL_ROOT = join(homedir(), 'Library', 'Mail');
 
 interface MailPluginConfig {
@@ -254,7 +262,15 @@ function emailToDocument(e: ParsedEmail, sourcePath: string, mtimeMs: number): D
   const dateLine = e.date ? `Date: ${new Date(e.date).toISOString()}` : '';
 
   const headerBlock = [fromLine, toLine, dateLine].filter(Boolean).join('\n');
-  const content = `${subject}\n${headerBlock}\n\n${e.body}`;
+
+  // Hard-truncate the body: see MAX_EMBED_CHARS — tokenize cost is linear
+  // in the raw string length, and the model only attends to ~512 tokens
+  // anyway, so feeding it more is purely wasted work.
+  const headerSize = subject.length + headerBlock.length + 4;
+  const bodyBudget = Math.max(0, MAX_EMBED_CHARS - headerSize);
+  const truncatedBody = e.body.length > bodyBudget ? `${e.body.slice(0, bodyBudget)}…` : e.body;
+
+  const content = `${subject}\n${headerBlock}\n\n${truncatedBody}`;
 
   return {
     id: e.messageId || `${sourcePath}`,
@@ -268,6 +284,8 @@ function emailToDocument(e: ParsedEmail, sourcePath: string, mtimeMs: number): D
       cc: e.cc,
       messageId: e.messageId,
       sourcePath,
+      bodyTruncated: e.body.length > bodyBudget,
+      originalBodyLength: e.body.length,
     },
   };
 }
