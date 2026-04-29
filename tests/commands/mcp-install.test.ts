@@ -10,6 +10,7 @@ function makeClient(configPath: string): McpClient {
     label: 'Claude Code',
     configPath,
     serversPath: ['mcpServers'],
+    isInstalled: () => true,
   };
 }
 

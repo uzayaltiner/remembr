@@ -11,4 +11,5 @@ export const PATHS = {
   database: join(REMEMBR_HOME, 'db.sqlite'),
   logs: join(REMEMBR_HOME, 'logs'),
   plugins: join(REMEMBR_HOME, 'plugins'),
+  setupState: join(REMEMBR_HOME, '.setup-state.json'),
 } as const;

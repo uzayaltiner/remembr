@@ -12,6 +12,7 @@
  * untouched; we only set the `remembr` key under `mcpServers`.
  */
 
+import { execSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -27,6 +28,12 @@ export interface McpClient {
   configPath: string;
   /** Where the `mcpServers` map lives in the JSON. */
   serversPath: string[];
+  /**
+   * Returns true when the client is genuinely installed on this machine.
+   * Different clients leave different fingerprints (CLI binary, dotfile,
+   * IDE extension dir) so each implements its own probe.
+   */
+  isInstalled: () => boolean;
 }
 
 export interface InstallResult {
@@ -36,36 +43,60 @@ export interface InstallResult {
   reason?: string;
 }
 
+const CLAUDE_CONFIG = join(homedir(), '.claude.json');
+const CURSOR_CONFIG_DIR = join(homedir(), '.cursor');
+const CURSOR_CONFIG = join(CURSOR_CONFIG_DIR, 'mcp.json');
+const CLINE_GLOBAL_STORAGE = join(
+  homedir(),
+  'Library',
+  'Application Support',
+  'Code',
+  'User',
+  'globalStorage',
+  'saoudrizwan.claude-dev',
+);
+const CLINE_CONFIG = join(CLINE_GLOBAL_STORAGE, 'settings', 'cline_mcp_settings.json');
+
+/**
+ * Resolve a binary on PATH without throwing on missing.
+ * Returns true if `command -v <name>` exits 0.
+ */
+function commandExists(name: string): boolean {
+  try {
+    execSync(`command -v ${name}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const SUPPORTED_CLIENTS: McpClient[] = [
   {
     name: 'claude-code',
     label: 'Claude Code',
-    configPath: join(homedir(), '.claude.json'),
+    configPath: CLAUDE_CONFIG,
     serversPath: ['mcpServers'],
+    isInstalled: () => commandExists('claude') || existsSync(CLAUDE_CONFIG),
   },
   {
     name: 'cursor',
     label: 'Cursor',
-    configPath: join(homedir(), '.cursor', 'mcp.json'),
+    configPath: CURSOR_CONFIG,
     serversPath: ['mcpServers'],
+    // Cursor creates ~/.cursor on first launch; the binary 'cursor' is also
+    // optionally installed. Either one is a real signal.
+    isInstalled: () => commandExists('cursor') || existsSync(CURSOR_CONFIG_DIR),
   },
   {
     name: 'cline',
     label: 'Cline',
     // VS Code extension; the MCP file lives under the user's VS Code config.
     // Path varies by OS — this is the macOS default.
-    configPath: join(
-      homedir(),
-      'Library',
-      'Application Support',
-      'Code',
-      'User',
-      'globalStorage',
-      'saoudrizwan.claude-dev',
-      'settings',
-      'cline_mcp_settings.json',
-    ),
+    configPath: CLINE_CONFIG,
     serversPath: ['mcpServers'],
+    // Only treat Cline as installed when its globalStorage dir exists, which
+    // VS Code creates the first time the extension activates.
+    isInstalled: () => existsSync(CLINE_GLOBAL_STORAGE),
   },
 ];
 
@@ -80,11 +111,12 @@ const REMEMBR_ENTRY: RemembrEntry = {
 };
 
 /**
- * Return only the clients whose config file (or parent dir, for cline)
- * actually exists on disk. Useful for "auto-install detected clients" UX.
+ * Return only the clients whose `isInstalled()` reports true. The probe
+ * is per-client (binary on PATH, well-known dotfile, IDE extension dir,
+ * …) so we don't false-positive on signals like "homedir exists".
  */
 export function detectInstalledClients(clients: McpClient[] = SUPPORTED_CLIENTS): McpClient[] {
-  return clients.filter((c) => existsSync(c.configPath) || existsSync(dirname(c.configPath)));
+  return clients.filter((c) => c.isInstalled());
 }
 
 export function installMcpFor(client: McpClient): InstallResult {

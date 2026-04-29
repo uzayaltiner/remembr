@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { runConfigModel, runConfigProvider, runConfigShow } from './commands/config-cmd.js';
+import { runFda } from './commands/fda.js';
 import { IndexError, runIndex, runWatch } from './commands/index-cmd.js';
 import { runInit } from './commands/init.js';
 import { type ClientName, runMcpInstall } from './commands/mcp-install.js';
@@ -14,7 +15,7 @@ import { runSync } from './commands/sync-cmd.js';
 import { bootstrapPlugins } from './plugins/index.js';
 import { renderTUI } from './ui/render.js';
 
-const VERSION = '0.1.0-pre.2';
+const VERSION = '0.1.0-pre.3';
 
 bootstrapPlugins();
 
@@ -32,6 +33,7 @@ const KNOWN_COMMANDS = new Set([
   'paths',
   'config',
   'mcp',
+  'fda',
   'help',
   '--help',
   '-h',
@@ -63,8 +65,17 @@ program
   .command('setup')
   .description('Guided one-shot setup: paths, FDA, MCP install, initial sync')
   .option('-y, --yes', 'accept defaults for every prompt (non-interactive)')
-  .action(async (opts: { yes?: boolean }) => {
-    await runSetup({ yes: opts.yes });
+  .option('--reset', 'wipe saved phase state and run every phase from scratch')
+  .action(async (opts: { yes?: boolean; reset?: boolean }) => {
+    await runSetup({ yes: opts.yes, reset: opts.reset });
+  });
+
+program
+  .command('fda')
+  .description('Check or repair Full Disk Access for Apple plugins (macOS)')
+  .option('--open', 'open System Settings → Full Disk Access if access is missing')
+  .action(async (opts: { open?: boolean }) => {
+    await runFda({ open: opts.open });
   });
 
 program

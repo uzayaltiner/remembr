@@ -5,6 +5,40 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.0-pre.3] — 2026-04-29
+
+### Changed
+
+- **`remembr setup` is now a resumable state machine.** Phases —
+  bootstrap, paths, fda, mcp, sync — are tracked in
+  `~/.remembr/.setup-state.json`. Re-running `remembr setup` skips
+  every phase that's already done. `--reset` wipes the state.
+- **FDA flow rewritten to match macOS reality.** Granted permissions
+  apply only to processes launched AFTER the user adds the terminal
+  to Full Disk Access, so we no longer pretend to wait for an
+  in-process update. When FDA is denied, setup opens System Settings,
+  prints exact restart instructions, and exits cleanly. The user
+  re-launches their terminal and re-runs `remembr setup`, which
+  resumes from where it left off.
+- **MCP client detection is now signal-based per client.** Claude
+  Code: `which claude` or `~/.claude.json`. Cursor: `which cursor`
+  or `~/.cursor/`. Cline: VS Code globalStorage extension dir. The
+  previous "homedir-as-fallback" check was a false-positive on every
+  machine.
+- **`remembr init` learned a `quiet` flag.** Setup uses it to suppress
+  the trailing "Next steps" hint when init runs as a sub-step.
+
+### Added
+
+- **`remembr fda [--open]`** — standalone Full Disk Access status
+  check + repair instructions. Prints the exact macOS restart
+  sequence and optionally opens System Settings.
+- **`remembr setup --reset`** — wipe phase state and re-run from the
+  beginning.
+- **`tests/config/setup-state.test.ts`** — 6 tests covering the state
+  machine: round-trip, version mismatch, corrupt-file recovery,
+  reset, markPhase semantics.
+
 ## [0.1.0-pre.2] — 2026-04-28
 
 ### Added
@@ -96,7 +130,8 @@ real data on macOS but APIs and the wire format are still subject to change.
 - Apple Notes index covers titles + sidebar snippets only — full body
   protobuf decoding is on the v0.3 roadmap.
 
-[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0-pre.2...HEAD
+[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0-pre.3...HEAD
+[0.1.0-pre.3]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.3
 [0.1.0-pre.2]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.2
 [0.1.0-pre.1]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.1
 [0.1.0-pre]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre

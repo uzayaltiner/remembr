@@ -122,6 +122,7 @@ Restart your client. Claude will get two tools â€” `search` and `list_sources` â
 ```
 remembr setup                               Guided one-shot setup (recommended)
 remembr setup --yes                         Same, accepting every default
+remembr setup --reset                       Wipe saved phase state, run all phases
 
 remembr init                                Low-level: create ~/.remembr/ only
 remembr status                              Health check
@@ -131,6 +132,9 @@ remembr sync --watch                        Initial sync + live file-watch
 remembr search "<query>"                    Hybrid semantic + keyword search
 remembr "<query>"                           Shortcut for search
 remembr                                     Interactive TUI
+
+remembr fda                                 Check Full Disk Access status (macOS)
+remembr fda --open                          Same, plus open System Settings
 
 remembr plugins list                        Show every plugin + chunk count
 remembr plugins enable <name>               Opt-in

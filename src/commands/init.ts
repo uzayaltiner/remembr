@@ -3,14 +3,18 @@ import { DEFAULT_CONFIG, configExists, ensureHome, writeConfig } from '../config
 
 export interface InitOptions {
   force?: boolean;
+  /** When true, suppress the trailing "Next steps" hint (used by `remembr setup`). */
+  quiet?: boolean;
 }
 
 export function runInit(options: InitOptions = {}): void {
   const alreadyInitialized = configExists();
 
   if (alreadyInitialized && !options.force) {
-    console.log(`✓ Already initialized at ${PATHS.home}`);
-    console.log(`  Run 'remembr init --force' to reset config.`);
+    if (!options.quiet) {
+      console.log(`✓ Already initialized at ${PATHS.home}`);
+      console.log(`  Run 'remembr init --force' to reset config.`);
+    }
     return;
   }
 
@@ -23,6 +27,8 @@ export function runInit(options: InitOptions = {}): void {
     console.log(`✓ Created ${PATHS.home}`);
     console.log(`✓ Created ${PATHS.config}`);
   }
+
+  if (options.quiet) return;
 
   console.log('');
   console.log('Next steps:');
