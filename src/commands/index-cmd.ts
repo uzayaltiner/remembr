@@ -31,7 +31,36 @@ export interface IndexOptions {
   maxAgeDays?: number;
   /** Wipe existing data for this plugin before indexing. */
   reset?: boolean;
+  /**
+   * When set, takes over output: no Progress bar, no console.log summary,
+   * and per-plugin events are emitted via this callback instead. Used by
+   * the Ink-based setup TUI to draw its own progress UI.
+   */
+  onEvent?: IndexEventListener;
 }
+
+export type IndexEventListener = (event: IndexEvent) => void;
+
+export type IndexEvent =
+  | { kind: 'start'; plugin: string }
+  | {
+      kind: 'progress';
+      plugin: string;
+      current: number;
+      total: number;
+      message?: string;
+    }
+  | {
+      kind: 'done';
+      plugin: string;
+      chunks: number;
+      newDocs: number;
+      updatedDocs: number;
+      unchangedDocs: number;
+      staleRemoved: number;
+      elapsedMs: number;
+    }
+  | { kind: 'error'; plugin: string; error: string };
 
 export class IndexError extends Error {
   constructor(message: string) {
@@ -92,16 +121,21 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
     },
   };
 
-  console.log(`▸ Indexing with plugin: ${pluginName}`);
-  console.log(`  Embedder:             ${embedder.provider} / ${embedder.model} (${dims} dims)`);
-  console.log(`  Database:             ${PATHS.database}`);
-  console.log('');
+  const quiet = options.onEvent !== undefined;
+  if (!quiet) {
+    console.log(`▸ Indexing with plugin: ${pluginName}`);
+    console.log(`  Embedder:             ${embedder.provider} / ${embedder.model} (${dims} dims)`);
+    console.log(`  Database:             ${PATHS.database}`);
+    console.log('');
+  }
+  options.onEvent?.({ kind: 'start', plugin: pluginName });
 
   const startedAt = Date.now();
   let chunkCount = 0;
   let skippedDocuments = 0;
   let updatedDocuments = 0;
   let newDocuments = 0;
+  let staleRemoved = 0;
 
   let buffer: Document[] = [];
 
@@ -172,7 +206,7 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
     }
   };
 
-  const progress = new Progress();
+  const progress = quiet ? null : new Progress();
 
   let pluginIterator: AsyncIterator<Document> | null = null;
 
@@ -181,12 +215,22 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
       .ingest({
         config: ingestConfig,
         onProgress: ({ current, total, message }) => {
+          if (options.onEvent) {
+            options.onEvent({
+              kind: 'progress',
+              plugin: pluginName,
+              current,
+              total: total ?? 0,
+              message,
+            });
+            return;
+          }
           if (!message) return;
           // Lines that start with ⚠ are warnings — print above the progress bar
           if (message.startsWith('⚠')) {
-            progress.log(message);
+            progress?.log(message);
           } else {
-            progress.update(current, total, message);
+            progress?.update(current, total, message);
           }
         },
       })
@@ -197,9 +241,10 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
       try {
         next = await pluginIterator.next();
       } catch (err) {
-        progress.finish();
+        progress?.finish();
         const message = err instanceof Error ? err.message : String(err);
         log.error('plugin ingest failed', { plugin: pluginName, error: message });
+        options.onEvent?.({ kind: 'error', plugin: pluginName, error: message });
         // Bubble the message up so callers (CLI handler / sync) decide what
         // to do — exit with a clean message, or skip and move on.
         throw new IndexError(message);
@@ -226,13 +271,12 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
       }
     }
     await drain();
-    progress.finish();
-    console.log('');
+    progress?.finish();
+    if (!quiet) console.log('');
 
     // Stale cleanup: documents that exist in the store but weren't yielded
     // by the plugin this run are gone (file deleted, history pruned, etc).
     // Skip cleanup if --reset was used (we already wiped the source above).
-    let staleRemoved = 0;
     if (!options.reset) {
       const stored = store.listDocumentIds(pluginName);
       for (const docId of stored) {
@@ -241,7 +285,7 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
           staleRemoved++;
         }
       }
-      if (staleRemoved > 0) {
+      if (staleRemoved > 0 && !quiet) {
         console.log(`ℹ Removed ${staleRemoved} stale documents (no longer in source)`);
       }
     }
@@ -250,10 +294,22 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
   }
 
   const elapsedMs = Date.now() - startedAt;
-  console.log(
-    `✓ Indexed ${chunkCount} chunks: ${newDocuments} new, ${updatedDocuments} updated, ${skippedDocuments} unchanged`,
-  );
-  console.log(`  Elapsed: ${formatDuration(elapsedMs)}`);
+  if (!quiet) {
+    console.log(
+      `✓ Indexed ${chunkCount} chunks: ${newDocuments} new, ${updatedDocuments} updated, ${skippedDocuments} unchanged`,
+    );
+    console.log(`  Elapsed: ${formatDuration(elapsedMs)}`);
+  }
+  options.onEvent?.({
+    kind: 'done',
+    plugin: pluginName,
+    chunks: chunkCount,
+    newDocs: newDocuments,
+    updatedDocs: updatedDocuments,
+    unchangedDocs: skippedDocuments,
+    staleRemoved,
+    elapsedMs,
+  });
 
   log.info('index complete', {
     plugin: pluginName,

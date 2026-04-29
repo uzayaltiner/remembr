@@ -16,10 +16,29 @@ import {
   writeConfig,
 } from '../config/settings.js';
 import { registry } from '../plugins/registry.js';
-import { runIndex, runWatch } from './index-cmd.js';
+import { type IndexEventListener, runIndex, runWatch } from './index-cmd.js';
+
+// Plugin sync order: cheap, predictable plugins first so the user gets
+// hits in search results within the first few seconds, even on a cold run.
+// Mail and browser go last because their first run dominates wall time.
+const SYNC_ORDER: readonly string[] = [
+  'apple-notes',
+  'github',
+  'calendar',
+  'fs',
+  'pdf',
+  'browser',
+  'mail',
+];
 
 export interface SyncOptions {
   watch?: boolean;
+  /**
+   * When set, the function emits structured events through this listener
+   * instead of (only) writing to stdout. Used by the Ink-based setup TUI
+   * to draw its own progress UI.
+   */
+  onEvent?: IndexEventListener;
 }
 
 interface PluginOutcome {
@@ -29,6 +48,11 @@ interface PluginOutcome {
 }
 
 const PATH_BASED_PLUGINS = new Set(['fs', 'pdf']);
+
+function orderRank(name: string): number {
+  const idx = SYNC_ORDER.indexOf(name);
+  return idx === -1 ? SYNC_ORDER.length : idx;
+}
 
 export async function runSync(options: SyncOptions = {}): Promise<void> {
   if (!configExists()) {
@@ -49,11 +73,15 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
     config = merge.config;
   }
 
-  const enabledPlugins = registered.filter((p) => config.plugins[p.name]?.enabled !== false);
+  const enabledPlugins = registered
+    .filter((p) => config.plugins[p.name]?.enabled !== false)
+    .sort((a, b) => orderRank(a.name) - orderRank(b.name));
 
   if (enabledPlugins.length === 0) {
-    console.log('No enabled plugins.');
-    console.log('  Re-enable: remembr plugins enable <name>');
+    if (!options.onEvent) {
+      console.log('No enabled plugins.');
+      console.log('  Re-enable: remembr plugins enable <name>');
+    }
     return;
   }
 
@@ -64,10 +92,11 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
     );
   }
 
+  const quiet = options.onEvent !== undefined;
   const outcomes: PluginOutcome[] = [];
 
   for (const plugin of enabledPlugins) {
-    console.log(`▸ ${plugin.name}`);
+    if (!quiet) console.log(`▸ ${plugin.name}`);
 
     // Skip plugins that explicitly say they aren't usable on this system —
     // saves the user a confusing error mid-pipeline.
@@ -78,23 +107,32 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
       available = false;
     }
     if (!available) {
-      console.log('  ⏭ skipped: not available on this system');
-      console.log('');
+      if (!quiet) {
+        console.log('  ⏭ skipped: not available on this system');
+        console.log('');
+      }
+      options.onEvent?.({
+        kind: 'error',
+        plugin: plugin.name,
+        error: 'not available on this system',
+      });
       outcomes.push({ name: plugin.name, status: 'skipped', reason: 'unavailable' });
       continue;
     }
 
     try {
-      await runIndex(plugin.name, {});
+      await runIndex(plugin.name, { onEvent: options.onEvent });
       outcomes.push({ name: plugin.name, status: 'indexed' });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const reason = friendlyReason(message);
-      for (const line of message.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed.length === 0) continue;
-        const prefix = trimmed.startsWith('✗') || trimmed.startsWith('⚠') ? '  ' : '  ✗ ';
-        console.log(`${prefix}${trimmed}`);
+      if (!quiet) {
+        for (const line of message.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed.length === 0) continue;
+          const prefix = trimmed.startsWith('✗') || trimmed.startsWith('⚠') ? '  ' : '  ✗ ';
+          console.log(`${prefix}${trimmed}`);
+        }
       }
       outcomes.push({
         name: plugin.name,
@@ -104,10 +142,10 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
       });
     }
 
-    console.log('');
+    if (!quiet) console.log('');
   }
 
-  printSummary(outcomes);
+  if (!quiet) printSummary(outcomes);
 }
 
 async function runWatchSync(enabledNames: string[], config: BrainConfig): Promise<void> {

@@ -21,14 +21,14 @@ export function runInit(options: InitOptions = {}): void {
   ensureHome();
   writeConfig(DEFAULT_CONFIG);
 
+  if (options.quiet) return;
+
   if (alreadyInitialized) {
     console.log(`✓ Reset config at ${PATHS.config}`);
   } else {
     console.log(`✓ Created ${PATHS.home}`);
     console.log(`✓ Created ${PATHS.config}`);
   }
-
-  if (options.quiet) return;
 
   console.log('');
   console.log('Next steps:');
