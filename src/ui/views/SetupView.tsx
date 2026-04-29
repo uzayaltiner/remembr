@@ -33,11 +33,19 @@ import {
   writeConfig,
 } from '../../config/settings.js';
 import { markPhase, readSetupState, resetSetupState } from '../../config/setup-state.js';
+import {
+  isAvailable as claudeAvailable,
+  isClaudeRunning,
+  openClaude,
+  restartClaude,
+} from '../../utils/claude-app.js';
 import { type FdaStatus, checkFullDiskAccess, openFdaSystemSettings } from '../../utils/fda.js';
 import { MultiSelect } from '../components/MultiSelect.js';
 import { ProgressBar } from '../components/ProgressBar.js';
 
 type Phase = 'paths' | 'apple' | 'fda-blocked' | 'mcp' | 'sync' | 'done';
+
+type ClaudeAction = 'idle' | 'restarting' | 'opening' | 'launched' | 'failed';
 
 export interface SetupViewProps {
   /** When true, wipe state file before starting. */
@@ -57,6 +65,10 @@ export const SetupView: FC<SetupViewProps> = ({ reset = false }) => {
   // ── sync state
   const [syncStarted, setSyncStarted] = useState(false);
   const [syncProgress, setSyncProgress] = useState<Map<string, PluginSyncState>>(new Map());
+
+  // ── claude-app state (only relevant on macOS, only after sync completes)
+  const [claudeRunning, setClaudeRunning] = useState<boolean | null>(null);
+  const [claudeAction, setClaudeAction] = useState<ClaudeAction>('idle');
 
   // bootstrap once on mount
   useEffect(() => {
@@ -198,6 +210,14 @@ export const SetupView: FC<SetupViewProps> = ({ reset = false }) => {
       });
   }, [phase, syncStarted]);
 
+  // Probe Claude.app state once we land on the Done screen — only on macOS.
+  useEffect(() => {
+    if (phase !== 'done' || !claudeAvailable() || claudeRunning !== null) return;
+    isClaudeRunning()
+      .then(setClaudeRunning)
+      .catch(() => setClaudeRunning(false));
+  }, [phase, claudeRunning]);
+
   // ───────────────────────── input wiring
   useInput((input, key) => {
     if (phase === 'paths') {
@@ -205,14 +225,33 @@ export const SetupView: FC<SetupViewProps> = ({ reset = false }) => {
         submitPaths();
         return;
       }
-      // '+' to add another path goes through TextInput onSubmit below.
     }
     if (phase === 'fda-blocked' && key.return) {
       void openFdaSystemSettings().catch(() => undefined);
       exit();
+      return;
     }
-    if (phase === 'done' && (key.return || input === 'q' || key.escape)) {
-      exit();
+    if (phase === 'done') {
+      // Don't let Enter / q exit while a Claude action is mid-flight.
+      if (claudeAction === 'restarting' || claudeAction === 'opening') return;
+
+      if (input === 'r' && claudeRunning && claudeAction === 'idle') {
+        setClaudeAction('restarting');
+        restartClaude()
+          .then(() => setClaudeAction('launched'))
+          .catch(() => setClaudeAction('failed'));
+        return;
+      }
+      if (input === 'o' && claudeRunning === false && claudeAction === 'idle') {
+        setClaudeAction('opening');
+        openClaude()
+          .then(() => setClaudeAction('launched'))
+          .catch(() => setClaudeAction('failed'));
+        return;
+      }
+      if (key.return || input === 'q' || key.escape) {
+        exit();
+      }
     }
   });
 
@@ -320,9 +359,11 @@ export const SetupView: FC<SetupViewProps> = ({ reset = false }) => {
               <Text dimColor> (health + indexed counts)</Text>
             </Text>
           </Box>
-          <Box marginTop={1}>
-            <Text dimColor>Restart your MCP client to see remembr in the tools list.</Text>
-          </Box>
+          <ClaudeAppCta
+            available={claudeAvailable()}
+            running={claudeRunning}
+            action={claudeAction}
+          />
           <Box marginTop={1}>
             <Text dimColor>Press Enter or Esc to exit.</Text>
           </Box>
@@ -354,6 +395,84 @@ const McpStep: FC<{ onSubmit: (selected: string[]) => void }> = ({ onSubmit }) =
   }));
 
   return <MultiSelect items={items} onSubmit={onSubmit} />;
+};
+
+// ──────────────────────────────────────────────────────────
+// Done-screen Claude CTA. Shown only on macOS, only after we know
+// whether Claude.app is currently running. On other platforms or
+// while we're still probing, returns null.
+
+interface ClaudeAppCtaProps {
+  available: boolean;
+  running: boolean | null;
+  action: ClaudeAction;
+}
+
+const ClaudeAppCta: FC<ClaudeAppCtaProps> = ({ available, running, action }) => {
+  if (!available) {
+    return (
+      <Box marginTop={1}>
+        <Text dimColor>Restart your MCP client to see remembr in the tools list.</Text>
+      </Box>
+    );
+  }
+
+  if (running === null) {
+    return (
+      <Box marginTop={1}>
+        <Text dimColor>Checking Claude Code…</Text>
+      </Box>
+    );
+  }
+
+  if (action === 'restarting') {
+    return (
+      <Box marginTop={1}>
+        <Text color="yellow">⏳ Restarting Claude Code…</Text>
+      </Box>
+    );
+  }
+  if (action === 'opening') {
+    return (
+      <Box marginTop={1}>
+        <Text color="yellow">⏳ Opening Claude Code…</Text>
+      </Box>
+    );
+  }
+  if (action === 'launched') {
+    return (
+      <Box marginTop={1}>
+        <Text color="green">✓ Claude Code launched. remembr is now available as an MCP tool.</Text>
+      </Box>
+    );
+  }
+  if (action === 'failed') {
+    return (
+      <Box marginTop={1}>
+        <Text color="red">✗ Failed to control Claude Code. Open it manually.</Text>
+      </Box>
+    );
+  }
+
+  if (running) {
+    return (
+      <Box marginTop={1} flexDirection="column">
+        <Text>Claude Code is running. MCP servers reload only on restart.</Text>
+        <Text>
+          <Text color="cyan">[r]</Text> Restart Claude Code now
+        </Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Text>Claude Code is not running.</Text>
+      <Text>
+        <Text color="cyan">[o]</Text> Open Claude Code
+      </Text>
+    </Box>
+  );
 };
 
 // ──────────────────────────────────────────────────────────

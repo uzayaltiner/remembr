@@ -23,6 +23,7 @@ import {
 } from '../config/settings.js';
 import { markPhase, resetSetupState } from '../config/setup-state.js';
 import { SetupView } from '../ui/views/SetupView.js';
+import { isAvailable as claudeAvailable, isClaudeRunning } from '../utils/claude-app.js';
 import { type FdaStatus, checkFullDiskAccess } from '../utils/fda.js';
 import { runInit } from './init.js';
 import { detectInstalledClients, installMcpFor } from './mcp-install.js';
@@ -104,7 +105,19 @@ async function runSetupHeadless(): Promise<void> {
 
   console.log('');
   console.log('✓ Setup complete.');
-  console.log('  Restart your MCP client to see remembr in the tools list.');
+
+  if (claudeAvailable()) {
+    const running = await isClaudeRunning().catch(() => false);
+    if (running) {
+      console.log('  Claude Code is running — restart it to load the new MCP server:');
+      console.log('    osascript -e \'tell application "Claude" to quit\' && open -a Claude');
+    } else {
+      console.log('  Open Claude Code to start using remembr:');
+      console.log('    open -a Claude');
+    }
+  } else {
+    console.log('  Restart your MCP client to see remembr in the tools list.');
+  }
 }
 
 function addPath(config: BrainConfig, plugin: string, path: string): BrainConfig {

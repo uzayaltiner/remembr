@@ -234,28 +234,30 @@ API providers (Voyage, OpenAI) are on the roadmap.
 
 ## Roadmap
 
-### v0.1 (current — pre-alpha)
+### Shipped in 0.1
 
 - [x] MCP server + CLI
-- [x] Bun + bun:sqlite + sqlite-vec + FTS5
-- [x] Hybrid search (RRF)
-- [x] Multilingual default embedder
-- [x] 7 source plugins
+- [x] Node.js + better-sqlite3 + sqlite-vec + FTS5
+- [x] Hybrid search (RRF) — semantic kNN + keyword
+- [x] Multilingual default embedder (Transformers.js)
+- [x] Ollama opt-in
+- [x] 7 source plugins (fs, browser, pdf, calendar, mail, apple-notes, github)
 - [x] Incremental indexing + file watcher
+- [x] Ink TUI setup with live per-plugin progress bars
+- [x] FDA detection + System Settings deeplink
+- [x] MCP auto-install for Claude Code / Cursor / Cline
+- [x] Claude Code restart from setup
 
-### v0.2
+### Next
 
-- [ ] Slack OAuth (per-user app)
+- [ ] Daemon mode (`remembr start` + launchctl) for automatic re-sync
 - [ ] iMessage source
 - [ ] Apple Notes full body (protobuf decode)
-- [ ] Daemon mode (`remembr start` + launchctl)
-
-### v0.3+
-
+- [ ] Slack OAuth (per-user app)
 - [ ] Voyage / OpenAI embedding providers
 - [ ] Reranking pass on top-k
 - [ ] Linear / Jira sources
-- [ ] Multi-platform (Linux + Windows fs / browser sources)
+- [ ] Windows support (fs / browser sources)
 
 ---
 

@@ -5,6 +5,71 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-04-29
+
+First public release. The pre-alpha 0.1.0-pre.\* line had a public
+GitHub presence but was never tagged as `latest` on npm; this is the
+first release that takes that slot.
+
+### Added
+
+- **`remembr setup`** is an Ink TUI: arrow / space / enter prompts
+  for paths, Apple plugins, and MCP clients, then a live per-plugin
+  progress dashboard during the initial sync.
+- **`remembr setup --yes`** runs the same flow headlessly (no TTY
+  needed) for CI / scripting.
+- **Claude Code lifecycle** — the Done screen detects whether
+  Claude.app is running and offers `[r] Restart` or `[o] Open` so the
+  user doesn't have to leave the terminal to load the new MCP server.
+- **`remembr fda [--open]`** — standalone Full Disk Access status +
+  repair flow.
+- **`remembr mcp install [--client <name>] [--all]`** — register the
+  remembr MCP server with `~/.claude.json`, `~/.cursor/mcp.json`, or
+  the Cline settings file. Idempotent, JSON-merge, writes a backup.
+
+### Changed
+
+- **Indexing pipeline runs 2-deep.** While a batch of 32 documents is
+  being embedded + written to SQLite, the producer plugin keeps
+  yielding to fill the next batch. ~1.5–2× on every plugin.
+- **Plugin sync order is explicit** — apple-notes → github → calendar
+  → fs → pdf → browser → mail. Cheap plugins finish first so search
+  has hits within seconds even on a cold run.
+- **`fs` defaults are notes-only** (`md`, `markdown`, `mdx`, `txt`,
+  `rst`, `org`). Source code is opt-in via
+  `config.plugins.fs.extensions`. `~30` ignore patterns block
+  `node_modules`, `.next`, `Pods`, `DerivedData`, every common lock
+  file, minified bundles, and source maps. Notes have a 1 MB size
+  budget; code has 200 KB.
+- **`mail` defaults tightened** — 5000 → 2000 message cap, default
+  365-day lookback, Junk / Spam / Trash / Drafts skipped.
+- **`browser` defaults tightened** — `maxAgeDays` 180 → 90,
+  `minVisitCount` 1 → 2, browser readers run in parallel.
+- **`pdf` plugin** runs 3 parses concurrently, ignores the same
+  noisy directories as `fs`, caps per-file size at 50 MB.
+- **`github` plugin** fans out stars / issues / PRs in parallel.
+- **`calendar` plugin** indexes only the last 365 days + next 180
+  days by default. Override via `pastDays` / `futureDays`.
+- **MCP detection is per-client** — `which claude` for Claude Code,
+  `~/.cursor/` for Cursor, VS Code globalStorage dir for Cline. The
+  previous "homedir-fallback" was a false-positive on every machine.
+- **Setup is a resumable state machine.** Phases (`bootstrap`,
+  `paths`, `fda`, `mcp`, `sync`) are persisted in
+  `~/.remembr/.setup-state.json`. Re-running setup skips completed
+  phases. The most common reason to re-run is FDA: macOS only
+  applies new TCC permissions to processes launched AFTER the user
+  grants access, so the only correct flow is "exit, restart
+  terminal, run setup again".
+- **Runtime is Node.js ≥ 20** (was: Bun + system SQLite).
+  Distribution is a standard `npm install -g remembr`. Linux is
+  genuinely supported alongside macOS in CI.
+
+### Performance
+
+End-to-end first sync on a typical Documents / Mail / Browser load:
+**~10 minutes → ~3 minutes** vs the pre-alpha line, driven mostly by
+the pipeline change and the per-plugin default tightening.
+
 ## [0.1.0-pre.5] — 2026-04-29
 
 ### Performance
@@ -199,7 +264,8 @@ real data on macOS but APIs and the wire format are still subject to change.
 - Apple Notes index covers titles + sidebar snippets only — full body
   protobuf decoding is on the v0.3 roadmap.
 
-[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0-pre.5...HEAD
+[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0
 [0.1.0-pre.5]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.5
 [0.1.0-pre.4]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.4
 [0.1.0-pre.3]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.3
