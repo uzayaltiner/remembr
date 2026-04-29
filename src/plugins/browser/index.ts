@@ -20,9 +20,13 @@ import { type BrowserInfo, discoverBrowsers, findBrowser } from './discovery.js'
 import { readSafariHistory } from './safari.js';
 import type { BrowserHistoryEntry, ReadOptions } from './types.js';
 
+// 90-day window keeps the index relevant; URLs older than that are usually
+// "looked up once" and not the kind of thing the user remembers to ask
+// about. minVisitCount=2 drops the long tail of one-click-and-gone pages
+// (Google → some search result → close), which dominates a typical history.
 const DEFAULTS: ReadOptions = {
-  maxAgeDays: 180,
-  minVisitCount: 1,
+  maxAgeDays: 90,
+  minVisitCount: 2,
 };
 
 const SKIP_SCHEMES = /^(chrome|about|file|view-source|edge|brave|opera|chrome-extension):/i;
@@ -85,21 +89,40 @@ export const browserPlugin: Plugin = {
       minVisitCount: config.minVisitCount ?? DEFAULTS.minVisitCount,
     };
 
-    // Phase 1: read all browsers, collect entries.
+    // Phase 1: read all browsers in parallel.
+    // Each readBrowser is a sqlite copy + query — they don't contend with
+    // each other (different files), so running concurrently shaves several
+    // hundred ms on machines with multiple browsers installed.
+    const reads = await Promise.all(
+      browsers.map(async (browser) => {
+        try {
+          const entries = readBrowser(browser, opts);
+          return { browser, entries, error: null as Error | null };
+        } catch (err) {
+          return {
+            browser,
+            entries: [] as BrowserHistoryEntry[],
+            error: err instanceof Error ? err : new Error(String(err)),
+          };
+        }
+      }),
+    );
     const allEntries: BrowserHistoryEntry[] = [];
-    for (const browser of browsers) {
-      try {
-        const entries = readBrowser(browser, opts);
-        allEntries.push(...entries);
+    for (const r of reads) {
+      if (r.error) {
         ctx.onProgress?.({
           current: 0,
           total: 0,
-          message: `${browser.name}: ${entries.length} history entries`,
+          message: `⚠ ${r.browser.name}: ${r.error.message}`,
         });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        ctx.onProgress?.({ current: 0, total: 0, message: `⚠ ${browser.name}: ${message}` });
+        continue;
       }
+      allEntries.push(...r.entries);
+      ctx.onProgress?.({
+        current: 0,
+        total: 0,
+        message: `${r.browser.name}: ${r.entries.length} history entries`,
+      });
     }
 
     // Phase 2: dedupe.

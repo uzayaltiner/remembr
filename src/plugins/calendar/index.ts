@@ -32,6 +32,35 @@ const CANDIDATE_PATHS = [
 // Mac absolute time → unix epoch (seconds offset between 2001-01-01 and 1970-01-01).
 const MAC_EPOCH_OFFSET_S = 978_307_200;
 
+// Default time window: last year + next 6 months. The user's calendar
+// almost certainly has 5+ years of school / job history we don't want
+// in the index. Override with `pastDays` and `futureDays` in config.
+const DEFAULT_PAST_DAYS = 365;
+const DEFAULT_FUTURE_DAYS = 180;
+
+interface CalendarPluginConfig {
+  enabled: boolean;
+  pastDays?: number;
+  futureDays?: number;
+}
+
+interface DateRange {
+  /** Mac absolute time, lower bound (inclusive). */
+  minStart: number;
+  /** Mac absolute time, upper bound (inclusive). */
+  maxStart: number;
+}
+
+function dateRangeFromConfig(config: CalendarPluginConfig): DateRange {
+  const pastDays = config.pastDays ?? DEFAULT_PAST_DAYS;
+  const futureDays = config.futureDays ?? DEFAULT_FUTURE_DAYS;
+  const nowMac = Date.now() / 1000 - MAC_EPOCH_OFFSET_S;
+  return {
+    minStart: nowMac - pastDays * 86_400,
+    maxStart: nowMac + futureDays * 86_400,
+  };
+}
+
 export const calendarPlugin: Plugin = {
   name: NAME,
   version: '0.2.0',
@@ -72,11 +101,12 @@ export const calendarPlugin: Plugin = {
     const db = new Database(tempPath, { readonly: true });
     try {
       const variant = detectSchemaVariant(db);
+      const range = dateRangeFromConfig(ctx.config as CalendarPluginConfig);
       ctx.onProgress?.({ current: 0, total: 0, message: `Schema: ${variant}` });
 
       let events: CalendarRow[];
       try {
-        events = readEvents(db, variant);
+        events = readEvents(db, variant, range);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(
@@ -141,9 +171,13 @@ function detectSchemaVariant(db: Database.Database): SchemaVariant {
   return 'unknown';
 }
 
-function readEvents(db: Database.Database, variant: SchemaVariant): CalendarRow[] {
-  if (variant === 'modern') return readModern(db);
-  if (variant === 'core-data') return readCoreData(db);
+function readEvents(
+  db: Database.Database,
+  variant: SchemaVariant,
+  range: DateRange,
+): CalendarRow[] {
+  if (variant === 'modern') return readModern(db, range);
+  if (variant === 'core-data') return readCoreData(db, range);
   throw new Error('Unknown schema — no recognised tables found.');
 }
 
@@ -158,7 +192,7 @@ interface ModernRow {
   location: string | null;
 }
 
-function readModern(db: Database.Database): CalendarRow[] {
+function readModern(db: Database.Database, range: DateRange): CalendarRow[] {
   // Apple has shuffled CalendarItem columns repeatedly (2018-2025).
   // Strategy: probe what exists, build the SELECT + WHERE around that.
   const ciCols = tableColumns(db, 'CalendarItem');
@@ -197,7 +231,8 @@ function readModern(db: Database.Database): CalendarRow[] {
   for (const col of ['is_pseudo', 'deleted', 'soft_deleted', 'is_orphan']) {
     if (ciCols.has(col)) filters.push(`COALESCE(ci.${col}, 0) = 0`);
   }
-  const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+  filters.push('ci.start_date BETWEEN ? AND ?');
+  const where = `WHERE ${filters.join(' AND ')}`;
 
   const sql = `
     SELECT ${select.join(', ')}
@@ -207,7 +242,7 @@ function readModern(db: Database.Database): CalendarRow[] {
     ORDER BY ci.start_date DESC
   `;
 
-  const rows = db.prepare(sql).all() as ModernRow[];
+  const rows = db.prepare(sql).all(range.minStart, range.maxStart) as ModernRow[];
 
   return rows.map((r, i) => ({
     uid: r.external_id ?? `modern-${i}`,
@@ -252,7 +287,7 @@ interface CoreDataRow {
   ZLOCATION: string | null;
 }
 
-function readCoreData(db: Database.Database): CalendarRow[] {
+function readCoreData(db: Database.Database, range: DateRange): CalendarRow[] {
   // Z-prefix Core Data schema. We don't always know what the calendar/location
   // joins look like across versions, so query a flat projection and degrade
   // gracefully if some columns are missing.
@@ -268,9 +303,10 @@ function readCoreData(db: Database.Database): CalendarRow[] {
         NULL AS ZCALENDAR_TITLE,
         NULL AS ZLOCATION
       FROM ZEVENTITEM
+      WHERE ZSTARTDATE BETWEEN ? AND ?
       ORDER BY ZSTARTDATE DESC
     `)
-    .all() as CoreDataRow[];
+    .all(range.minStart, range.maxStart) as CoreDataRow[];
 
   return rows.map((r, i) => ({
     uid: r.ZEXTERNAL_ID ?? `core-data-${i}`,

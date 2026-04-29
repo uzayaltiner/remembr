@@ -90,32 +90,33 @@ export const githubPlugin: Plugin = {
     const me = await getCurrentUser();
     ctx.onProgress?.({ current: 0, total: 0, message: `Authenticated as @${me}` });
 
+    // Fan out the three GitHub fetches in parallel — they're independent
+    // API calls that previously ran one-after-the-other for ~3× the
+    // wall time. We collect into arrays here so the for-await downstream
+    // still yields documents in a stable order.
+    const [stars, issues, prs] = await Promise.all([
+      include.includes('stars') ? collect(fetchStars(me, ctx)) : Promise.resolve([]),
+      include.includes('issues')
+        ? collect(fetchInvolvingItems(me, 'issue', ctx))
+        : Promise.resolve([]),
+      include.includes('prs') ? collect(fetchInvolvingItems(me, 'pr', ctx)) : Promise.resolve([]),
+    ]);
+
     let yielded = 0;
-
-    if (include.includes('stars')) {
-      for await (const doc of fetchStars(me, ctx)) {
-        yielded++;
-        yield doc;
-      }
-    }
-
-    if (include.includes('issues')) {
-      for await (const doc of fetchInvolvingItems(me, 'issue', ctx)) {
-        yielded++;
-        yield doc;
-      }
-    }
-
-    if (include.includes('prs')) {
-      for await (const doc of fetchInvolvingItems(me, 'pr', ctx)) {
-        yielded++;
-        yield doc;
-      }
+    for (const doc of [...stars, ...issues, ...prs]) {
+      yielded++;
+      yield doc;
     }
 
     ctx.onProgress?.({ current: yielded, total: yielded, message: `GitHub: ${yielded} items` });
   },
 };
+
+async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
+  for await (const item of stream) out.push(item);
+  return out;
+}
 
 async function getCurrentUser(): Promise<string> {
   const { stdout } = await execFileAsync('gh', ['api', 'user', '--jq', '.login']);

@@ -24,3 +24,4 @@ coverage/
 
 # HF transformers cache (very large)
 .cache/
+.claude/

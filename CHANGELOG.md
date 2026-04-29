@@ -5,6 +5,47 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.0-pre.5] — 2026-04-29
+
+### Performance
+
+This release roughly halves end-to-end first-sync time on a typical
+machine. Headline change: the indexing pipeline is now 2-deep (one
+batch in flight while the next one fills), and every plugin has had
+its defaults tightened.
+
+### Changed
+
+- **Indexing pipeline runs 2-deep.** While a batch of 32 documents is
+  being embedded + written to SQLite, the producer plugin keeps
+  yielding to fill the next batch. Previously every plugin spent
+  most of its time blocked on embedder I/O. ~1.5–2× on every plugin.
+- **`mail` defaults tightened.**
+  - `DEFAULT_MAX_MESSAGES`: 5000 → 2000
+  - `DEFAULT_MAX_AGE_DAYS`: 365 (new — only the last year by default)
+  - Skip Junk / Spam / Trash / Drafts / Deleted Messages folders
+  - Both knobs are configurable via `config.plugins.mail.maxMessages`
+    and `config.plugins.mail.maxAgeDays`.
+- **`browser` defaults tightened.**
+  - `maxAgeDays`: 180 → 90
+  - `minVisitCount`: 1 → 2 (drops the long tail of single-click pages)
+  - Browser readers run in parallel (`Promise.all`) instead of serially.
+- **`pdf` plugin** now runs 3 parses concurrently and ignores the same
+  noisy directories as `fs` (`node_modules`, `Pods`, `DerivedData`,
+  `dist`, `build`, …). Per-file size cap of 50 MB stops scanned books
+  / huge dumps from blocking sync.
+- **`github` plugin** fans out stars / issues / PRs in parallel
+  (`Promise.all`) instead of running them one after the other.
+- **`calendar` plugin** now reads the last 365 days + the next 180 days
+  by default. Override with `config.plugins.calendar.pastDays` /
+  `futureDays`. The previous "all events ever" default was full of
+  10-year-old school events nobody wants in retrieval.
+
+### Notes
+
+Estimated end-to-end first-sync on a typical Documents / Mail / Browser
+load: ~10 minutes → ~3 minutes.
+
 ## [0.1.0-pre.4] — 2026-04-29
 
 ### Changed
@@ -158,7 +199,8 @@ real data on macOS but APIs and the wire format are still subject to change.
 - Apple Notes index covers titles + sidebar snippets only — full body
   protobuf decoding is on the v0.3 roadmap.
 
-[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0-pre.4...HEAD
+[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0-pre.5...HEAD
+[0.1.0-pre.5]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.5
 [0.1.0-pre.4]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.4
 [0.1.0-pre.3]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.3
 [0.1.0-pre.2]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.2

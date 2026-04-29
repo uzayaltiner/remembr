@@ -28,8 +28,22 @@ import { type ParsedEmail, parseEmlx } from './parser.js';
 const NAME = 'mail';
 
 // Cap to avoid melting the laptop on a 100k-message inbox the first time.
-// Users can override with maxMessages in plugin config.
-const DEFAULT_MAX_MESSAGES = 5000;
+// Users can override with maxMessages in plugin config. 2000 messages on
+// M-series silicon takes ~90s on first sync; raising to 5000 was the old
+// default but makes the demo painful.
+const DEFAULT_MAX_MESSAGES = 2000;
+
+// Default lookback in days. Apple Mail archives often go back a decade —
+// the bulk of useful retrieval is the last year. Override with `maxAgeDays`.
+const DEFAULT_MAX_AGE_DAYS = 365;
+
+// Folders we never index. They are loud, low-signal, and the user never
+// asks "what did I write in Junk a year ago?".
+const SKIP_FOLDER_PATTERNS = [
+  /\/(?:Junk|Spam|Trash|Deleted Items|Deleted Messages)\.mbox\//i,
+  /\/Junk Mail\.mbox\//i,
+  /\/Drafts\.mbox\//i,
+];
 
 // Skip individual .emlx files larger than this — they're almost always
 // HTML newsletters or messages with huge attachments, and parsing them
@@ -54,8 +68,10 @@ const MAIL_ROOT = join(homedir(), 'Library', 'Mail');
 
 interface MailPluginConfig {
   enabled: boolean;
-  /** Max messages to index per run. Default 5000; raise for full archive. */
+  /** Max messages to index per run. Default 2000; raise for full archive. */
   maxMessages?: number;
+  /** Skip messages older than this many days. Default 365. Set 0 to disable. */
+  maxAgeDays?: number;
 }
 
 export const mailPlugin: Plugin = {
@@ -88,6 +104,16 @@ export const mailPlugin: Plugin = {
         absolute: true,
         nodir: true,
       });
+      // Drop noisy folders before we ever stat them.
+      const before = files.length;
+      files = files.filter((f) => !SKIP_FOLDER_PATTERNS.some((re) => re.test(f)));
+      if (before !== files.length) {
+        ctx.onProgress?.({
+          current: 0,
+          total: 0,
+          message: `Skipped ${before - files.length} messages in Junk/Trash/Drafts`,
+        });
+      }
     } catch (err) {
       if (err instanceof Error && /EPERM|EACCES/.test(err.message)) {
         throw new Error(
@@ -99,12 +125,12 @@ export const mailPlugin: Plugin = {
 
     const config = ctx.config as MailPluginConfig;
     const limit = Math.max(1, config.maxMessages ?? DEFAULT_MAX_MESSAGES);
+    const maxAgeDays = config.maxAgeDays ?? DEFAULT_MAX_AGE_DAYS;
+    const minMtime = maxAgeDays > 0 ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : 0;
 
-    // Newest first by mtime. We don't pre-sort all files (could be 100k+);
-    // instead, when over the cap we only stat as many as we need.
-    if (files.length > limit) {
-      files = await pickRecent(files, limit);
-    }
+    // pickRecent takes newest by mtime. When a date floor is set we filter
+    // there to avoid stat'ing files we're going to throw away anyway.
+    files = await pickRecentSince(files, limit, minMtime);
 
     const total = files.length;
     let current = 0;
@@ -240,17 +266,23 @@ function findLatestVersionDir(): string | null {
 }
 
 /**
- * Pick the most-recently-modified `limit` files. Avoids stat'ing all 100k
- * messages by using a top-k heap pattern.
+ * Pick the most-recently-modified `limit` files newer than `minMtimeMs`.
+ * Avoids stat'ing all 100k messages by using a top-k heap pattern.
+ *
+ * Pass minMtimeMs=0 to disable the date floor.
  */
-async function pickRecent(files: string[], limit: number): Promise<string[]> {
+async function pickRecentSince(
+  files: string[],
+  limit: number,
+  minMtimeMs: number,
+): Promise<string[]> {
   interface FileWithMtime {
     path: string;
     mtimeMs: number;
   }
 
   const top: FileWithMtime[] = [];
-  let minMtime = Number.NEGATIVE_INFINITY;
+  let topMin = Number.NEGATIVE_INFINITY;
 
   for (const file of files) {
     let mtime = 0;
@@ -259,12 +291,14 @@ async function pickRecent(files: string[], limit: number): Promise<string[]> {
     } catch {
       continue;
     }
+    if (mtime < minMtimeMs) continue;
+
     if (top.length < limit) {
       top.push({ path: file, mtimeMs: mtime });
       if (top.length === limit) {
-        minMtime = Math.min(...top.map((f) => f.mtimeMs));
+        topMin = Math.min(...top.map((f) => f.mtimeMs));
       }
-    } else if (mtime > minMtime) {
+    } else if (mtime > topMin) {
       // Replace the oldest entry; recompute min.
       let minIdx = 0;
       for (let i = 1; i < top.length; i++) {
@@ -273,7 +307,7 @@ async function pickRecent(files: string[], limit: number): Promise<string[]> {
         if (t && m && t.mtimeMs < m.mtimeMs) minIdx = i;
       }
       top[minIdx] = { path: file, mtimeMs: mtime };
-      minMtime = Math.min(...top.map((f) => f.mtimeMs));
+      topMin = Math.min(...top.map((f) => f.mtimeMs));
     }
   }
 
