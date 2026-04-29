@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(remembr --version)",
+      "Read(//Users/uzay/.remembr/**)",
+      "Bash(npm uninstall *)",
+      "Bash(cp ~/.claude.json ~/.claude.json.before-uninstall)",
+      "Bash(python3 -c ' *)",
+      "Read(//Users/uzay/.npm/_cacache/content-v2/**)"
+    ]
+  }
+}

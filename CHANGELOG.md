@@ -5,6 +5,34 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.0-pre.4] — 2026-04-29
+
+### Changed
+
+- **`fs` defaults are now notes-only.** Indexing 4 000+ `.swift` /
+  `.json` / `.yml` files from a checked-out projects folder is almost
+  never what the user wants and dominates first-sync time. The default
+  extension set is now just `md`, `markdown`, `mdx`, `txt`, `rst`, `org`.
+  Code is opt-in via `config.plugins.fs.extensions`.
+- **`fs` ignore list expanded ~10×.** Now skips: `.next`, `.nuxt`,
+  `.svelte-kit`, `.turbo`, `.cache`, `.parcel-cache`, `coverage`,
+  `.nyc_output`, `__pycache__`, `.venv`, `venv`, `env`, `.pytest_cache`,
+  `Pods`, `.gradle`, `.idea`, `.vscode`, `vendor`, `bower_components`,
+  `DerivedData`, `*.xcworkspace`, `*.xcodeproj`, every common lockfile
+  (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `Cargo.lock`,
+  `Gemfile.lock`, `poetry.lock`, `composer.lock`, `*.lockb`),
+  minified bundles (`*.min.js`, `*.min.css`, `*.bundle.js`, `*.map`),
+  `*.log`, `.DS_Store`, `Thumbs.db`.
+- **Per-file size budgets are now per type.** Notes-style files keep
+  the previous 1 MB allowance; everything else (code, when explicitly
+  enabled) caps at 200 KB. Stops one stray generated artefact from
+  blowing up embedding time.
+
+### Performance
+
+- Initial `fs` sync time on a typical `~/Documents` (with checked-out
+  projects, books, sample code) drops from ~5 minutes to ~30 seconds.
+
 ## [0.1.0-pre.3] — 2026-04-29
 
 ### Changed
@@ -130,7 +158,8 @@ real data on macOS but APIs and the wire format are still subject to change.
 - Apple Notes index covers titles + sidebar snippets only — full body
   protobuf decoding is on the v0.3 roadmap.
 
-[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0-pre.3...HEAD
+[Unreleased]: https://github.com/uzayaltiner/remembr/compare/v0.1.0-pre.4...HEAD
+[0.1.0-pre.4]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.4
 [0.1.0-pre.3]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.3
 [0.1.0-pre.2]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.2
 [0.1.0-pre.1]: https://github.com/uzayaltiner/remembr/releases/tag/v0.1.0-pre.1

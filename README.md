@@ -70,7 +70,7 @@ Out of the box, every plugin is enabled. Disable the ones you don't want with `r
 
 | Source | Setup | Notes |
 |---|---|---|
-| 📄 **fs** | `remembr paths add fs ~/Documents` | Markdown, plain text, source code (30+ extensions) |
+| 📄 **fs** | `remembr paths add fs ~/Documents` | Markdown / plain text by default. Code is opt-in (see below). |
 | 🌐 **browser** | _automatic_ | Chrome, Safari, Arc, Brave, Edge, Vivaldi history |
 | 📕 **pdf** | `remembr paths add pdf ~/Documents/Books` | Indexes the text layer of PDFs |
 | 📅 **calendar** | _automatic_ | Apple Calendar live database (needs Full Disk Access) |
@@ -80,6 +80,26 @@ Out of the box, every plugin is enabled. Disable the ones you don't want with `r
 
 Apple Notes / Calendar / Mail need **Full Disk Access** for your terminal app:
 System Settings → Privacy & Security → Full Disk Access → add Terminal/iTerm/Warp/Ghostty.
+
+### Indexing source code with the `fs` plugin
+
+By default `fs` indexes **notes only** (`md`, `markdown`, `mdx`, `txt`, `rst`,
+`org`) — most users want remembr to recall what they wrote, not their
+lock files. To also index source code, edit `~/.remembr/config.json`:
+
+```json
+"fs": {
+  "enabled": true,
+  "paths": ["/Users/you/Documents"],
+  "extensions": [
+    "md", "markdown", "mdx", "txt", "rst", "org",
+    "ts", "tsx", "js", "jsx", "py", "go", "rs", "swift", "java", "kt"
+  ]
+}
+```
+
+`node_modules`, `dist`, `Pods`, lock files, minified bundles, and the
+usual suspects are ignored even when you turn code on.
 
 ---
 

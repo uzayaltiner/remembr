@@ -1,20 +1,28 @@
 /**
  * Filesystem source plugin.
  *
- * Reads text-like files (markdown, plain text, source code) from one or
- * more directories. Frontmatter is parsed for markdown; for everything else
- * the file is chunked as plain text.
+ * Reads text-like files (markdown, plain text) from one or more
+ * directories. By default we index *notes only* — most users want
+ * remembr to recall what they wrote, not their code lock files.
+ * Source code is opt-in via the per-plugin `extensions` override
+ * in `~/.remembr/config.json`.
  *
  * Plugin config (config.plugins.fs):
  *   {
- *     "enabled": boolean,
+ *     "enabled":    boolean,
  *     "paths":      string[],            // directories to scan
  *     "extensions": string[]             // optional override of file types
  *   }
  *
- * Default extensions cover most engineering text:
- *   md, markdown, txt, ts, tsx, js, jsx, py, go, rs, swift, java, kt,
- *   c, h, cpp, hpp, cs, rb, php, sh, sql, json, yaml, yml, toml
+ * Default extensions: md, markdown, mdx, txt, rst, org
+ *
+ * To also index code, override extensions:
+ *   remembr config show
+ *   # then edit config.plugins.fs.extensions
+ *
+ * Code-friendly preset (suggested):
+ *   ["md","markdown","mdx","txt","rst","org",
+ *    "ts","tsx","js","jsx","py","go","rs","swift","java","kt"]
  */
 
 import { readFile, stat } from 'node:fs/promises';
@@ -27,46 +35,86 @@ import { chunkText } from './text-chunker.js';
 
 const NAME = 'fs';
 
-const DEFAULT_EXTENSIONS = [
-  'md',
-  'markdown',
-  'mdx',
-  'txt',
-  'rst',
-  'org',
-  // common code
-  'ts',
-  'tsx',
-  'js',
-  'jsx',
-  'mjs',
-  'cjs',
-  'py',
-  'go',
-  'rs',
-  'swift',
-  'java',
-  'kt',
-  'kts',
-  'c',
-  'h',
-  'cpp',
-  'hpp',
-  'cs',
-  'rb',
-  'php',
-  'sh',
-  'bash',
-  'zsh',
-  'sql',
-  // configs
-  'json',
-  'yaml',
-  'yml',
-  'toml',
-];
+// Notes-first defaults. Indexing 4 000 .swift / .json / .yml files from a
+// projects folder is almost never what the user wants.
+const DEFAULT_EXTENSIONS = ['md', 'markdown', 'mdx', 'txt', 'rst', 'org'];
 
 const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdx']);
+const TEXT_LIKE_EXTS = new Set(['md', 'markdown', 'mdx', 'txt', 'rst', 'org']);
+
+// Per-file size guards. Notes-style files have a generous limit; everything
+// else (typically source code, when explicitly enabled) has a tight one
+// because giant generated artefacts blow up embedding time.
+const MAX_TEXT_BYTES = 1_000_000; // 1 MB
+const MAX_CODE_BYTES = 200_000; //  200 KB
+
+// Directories and filename patterns we never want to index. Big surface
+// because user-level ~/Documents folders often contain checked-out repos
+// with build artefacts, lock files, and minified bundles.
+const IGNORE_PATTERNS = [
+  // VCS / editor / OS
+  '**/.git/**',
+  '**/.hg/**',
+  '**/.svn/**',
+  '**/.idea/**',
+  '**/.vscode/**',
+  '**/.DS_Store',
+  '**/Thumbs.db',
+
+  // package / dep dirs
+  '**/node_modules/**',
+  '**/bower_components/**',
+  '**/vendor/**',
+  '**/Pods/**',
+  '**/.gradle/**',
+
+  // Python / Ruby
+  '**/__pycache__/**',
+  '**/.venv/**',
+  '**/venv/**',
+  '**/env/**',
+  '**/.pytest_cache/**',
+
+  // build / cache
+  '**/dist/**',
+  '**/build/**',
+  '**/out/**',
+  '**/target/**',
+  '**/.next/**',
+  '**/.nuxt/**',
+  '**/.svelte-kit/**',
+  '**/.turbo/**',
+  '**/.cache/**',
+  '**/.parcel-cache/**',
+  '**/.eslintcache',
+  '**/.tsbuildinfo',
+  '**/coverage/**',
+  '**/.nyc_output/**',
+
+  // notes-app private dirs
+  '**/.obsidian/**',
+  '**/.trash/**',
+
+  // iOS / Xcode generated
+  '**/DerivedData/**',
+  '**/*.xcworkspace/**',
+  '**/*.xcodeproj/**',
+
+  // lock & generated
+  '**/package-lock.json',
+  '**/pnpm-lock.yaml',
+  '**/yarn.lock',
+  '**/Gemfile.lock',
+  '**/Cargo.lock',
+  '**/poetry.lock',
+  '**/composer.lock',
+  '**/*.lockb',
+  '**/*.min.js',
+  '**/*.min.css',
+  '**/*.bundle.js',
+  '**/*.map',
+  '**/*.log',
+];
 
 export interface FsPluginConfig {
   paths?: string[];
@@ -110,15 +158,7 @@ export const fsPlugin: Plugin = {
         absolute: true,
         nodir: true,
         dot: false,
-        ignore: [
-          '**/node_modules/**',
-          '**/.git/**',
-          '**/.obsidian/**',
-          '**/dist/**',
-          '**/build/**',
-          '**/target/**',
-          '**/__pycache__/**',
-        ],
+        ignore: IGNORE_PATTERNS,
       });
       allFiles.push(...matches);
     }
@@ -133,21 +173,24 @@ export const fsPlugin: Plugin = {
       current++;
 
       try {
-        const raw = await readFile(filePath, 'utf-8');
+        const ext = extname(filePath).slice(1).toLowerCase();
         const stats = await stat(filePath);
 
-        if (raw.length === 0) continue;
-        // Skip very large files — usually binaries or generated artifacts.
-        if (raw.length > 5_000_000) {
+        // Tighter limit for code than for notes. Lock files and minified
+        // bundles are already excluded via IGNORE_PATTERNS, but stray
+        // generated artefacts still slip through occasionally.
+        const sizeBudget = TEXT_LIKE_EXTS.has(ext) ? MAX_TEXT_BYTES : MAX_CODE_BYTES;
+        if (stats.size > sizeBudget) {
           ctx.onProgress?.({
             current,
             total,
-            message: `⚠ Skipped ${basename(filePath)} (>5MB)`,
+            message: `⚠ Skipped ${basename(filePath)} (${Math.round(stats.size / 1024)}KB > ${sizeBudget / 1024}KB)`,
           });
           continue;
         }
 
-        const ext = extname(filePath).slice(1).toLowerCase();
+        const raw = await readFile(filePath, 'utf-8');
+        if (raw.length === 0) continue;
         const baseDir = paths.find((p) => filePath.startsWith(p)) ?? paths[0] ?? '';
         const relPath = relative(baseDir, filePath);
         const fingerprint = `${stats.mtimeMs}-${stats.size}`;

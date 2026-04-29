@@ -15,7 +15,7 @@ import { runSync } from './commands/sync-cmd.js';
 import { bootstrapPlugins } from './plugins/index.js';
 import { renderTUI } from './ui/render.js';
 
-const VERSION = '0.1.0-pre.3';
+const VERSION = '0.1.0-pre.4';
 
 bootstrapPlugins();
 
