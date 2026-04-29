@@ -26,7 +26,7 @@ export function runInit(options: InitOptions = {}): void {
 
   console.log('');
   console.log('Next steps:');
-  console.log('  1. Make sure Ollama is running: https://ollama.com');
-  console.log('  2. Pull the embedding model: ollama pull nomic-embed-text');
-  console.log('  3. Verify everything: remembr status');
+  console.log('  1. One-shot guided setup:  remembr setup');
+  console.log('  2. Or, manually:           remembr sync');
+  console.log('  3. Health check:           remembr status');
 }

@@ -3,16 +3,18 @@ import { Command } from 'commander';
 import { runConfigModel, runConfigProvider, runConfigShow } from './commands/config-cmd.js';
 import { IndexError, runIndex, runWatch } from './commands/index-cmd.js';
 import { runInit } from './commands/init.js';
+import { type ClientName, runMcpInstall } from './commands/mcp-install.js';
 import { runPathsAdd, runPathsList, runPathsRemove } from './commands/paths-cmd.js';
 import { runPluginDisable, runPluginEnable, runPluginsList } from './commands/plugins.js';
 import { runSearch } from './commands/search.js';
 import { runServe } from './commands/serve.js';
+import { runSetup } from './commands/setup.js';
 import { runStatus } from './commands/status.js';
 import { runSync } from './commands/sync-cmd.js';
 import { bootstrapPlugins } from './plugins/index.js';
 import { renderTUI } from './ui/render.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.0-pre.2';
 
 bootstrapPlugins();
 
@@ -20,6 +22,7 @@ bootstrapPlugins();
 // If the first arg isn't a known subcommand, treat the whole tail as a search.
 const KNOWN_COMMANDS = new Set([
   'init',
+  'setup',
   'status',
   'index',
   'sync',
@@ -28,6 +31,7 @@ const KNOWN_COMMANDS = new Set([
   'plugins',
   'paths',
   'config',
+  'mcp',
   'help',
   '--help',
   '-h',
@@ -56,8 +60,16 @@ program
   .version(VERSION, '-v, --version', 'output the current version');
 
 program
+  .command('setup')
+  .description('Guided one-shot setup: paths, FDA, MCP install, initial sync')
+  .option('-y, --yes', 'accept defaults for every prompt (non-interactive)')
+  .action(async (opts: { yes?: boolean }) => {
+    await runSetup({ yes: opts.yes });
+  });
+
+program
   .command('init')
-  .description('Initialize ~/.remembr/ and create default config')
+  .description('Initialize ~/.remembr/ and create default config (low-level)')
   .option('-f, --force', 'reset existing config to defaults')
   .action((opts: { force?: boolean }) => {
     runInit({ force: opts.force });
@@ -191,6 +203,17 @@ config
   .option('--reset', 'wipe the existing index (recommended when changing providers)')
   .action((name: string, opts: { model?: string; reset?: boolean }) => {
     runConfigProvider(name, { model: opts.model, reset: opts.reset });
+  });
+
+const mcp = program.command('mcp').description('Manage MCP client integrations');
+
+mcp
+  .command('install')
+  .description('Register the remembr MCP server with detected clients (Claude Code, Cursor, Cline)')
+  .option('--client <name>', 'install for a single client (claude-code | cursor | cline)')
+  .option('--all', 'install for every supported client (even if not detected)')
+  .action((opts: { client?: ClientName; all?: boolean }) => {
+    runMcpInstall({ client: opts.client, all: opts.all });
   });
 
 const plugins = program.command('plugins').description('Manage data source plugins');

@@ -47,19 +47,17 @@ Claude Code is great inside your filesystem. But the context you actually need l
 
 ```bash
 npm install -g remembr
+remembr setup
+```
 
-# One-time setup
-remembr init
-remembr status                    # verifies the embedder + sqlite
+That's it. `remembr setup` walks you through the 3 questions you need to answer (which folders to index, whether to enable the FDA-gated Apple plugins, which MCP client to wire up), grants Full Disk Access, registers itself with Claude Code / Cursor / Cline, and runs the first sync.
 
-# Index everything that's ready (runs all 7 sources, skips ones that need config)
-remembr sync
+After that:
 
-# Search
-remembr "rust async runtime"
-
-# Or launch the interactive TUI
-remembr
+```bash
+remembr "rust async runtime"      # search
+remembr                           # interactive TUI
+remembr sync                      # re-index after data changes
 ```
 
 First sync downloads a ~30 MB multilingual embedding model. Subsequent syncs are incremental and finish in seconds.
@@ -87,12 +85,18 @@ System Settings → Privacy & Security → Full Disk Access → add Terminal/iTe
 
 ## MCP setup (Claude Code, Cursor, Cline, …)
 
+`remembr setup` registers itself automatically with whatever MCP-aware
+clients it detects on your machine. To wire things up later (or from
+scratch on a different machine):
+
 ```bash
-# Claude Code
-claude mcp add --scope user remembr remembr -- serve
+remembr mcp install                       # every detected client
+remembr mcp install --client claude-code  # one specific client
 ```
 
-Or add to `~/.claude.json` directly:
+This merges the entry below into the right config file
+(`~/.claude.json`, `~/.cursor/mcp.json`, or the Cline settings file)
+without touching your other servers:
 
 ```json
 {
@@ -116,7 +120,10 @@ Restart your client. Claude will get two tools — `search` and `list_sources` �
 ## CLI reference
 
 ```
-remembr init                                Initialize ~/.remembr/
+remembr setup                               Guided one-shot setup (recommended)
+remembr setup --yes                         Same, accepting every default
+
+remembr init                                Low-level: create ~/.remembr/ only
 remembr status                              Health check
 remembr sync                                Index every enabled source
 remembr sync --watch                        Initial sync + live file-watch
@@ -132,6 +139,10 @@ remembr plugins disable <name>              Opt-out
 remembr paths add <plugin> <dir>            Configure a path-based source
 remembr paths list
 remembr paths remove <plugin> <dir>
+
+remembr mcp install                         Register MCP server with detected clients
+remembr mcp install --client <name>         Restrict to one (claude-code | cursor | cline)
+remembr mcp install --all                   Install for every supported client
 
 remembr config show                         Print current config
 remembr config provider <name> [--reset]    Switch embedding provider

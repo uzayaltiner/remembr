@@ -1,6 +1,6 @@
 {
   "name": "remembr",
-  "version": "0.1.0-pre.1",
+  "version": "0.1.0-pre.2",
   "description": "Recall anything across your tools — local-first semantic search MCP server + CLI for Claude Code, Cursor, and any MCP client.",
   "type": "module",
   "bin": {
