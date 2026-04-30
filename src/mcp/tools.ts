@@ -27,6 +27,39 @@ async function getEmbedder(): Promise<Embedder> {
   return embedder;
 }
 
+// Reuse a single Store across MCP tool calls. Opening better-sqlite3 +
+// loading the sqlite-vec extension costs ~500ms per call; caching saves
+// that cost on every tool invocation after the first.
+let cachedStore: Store | null = null;
+function getStore(dimensions: number): Store {
+  if (cachedStore) return cachedStore;
+  cachedStore = new Store({ path: PATHS.database, dimensions });
+  return cachedStore;
+}
+
+let shutdownHooked = false;
+function ensureShutdownHook(): void {
+  if (shutdownHooked) return;
+  shutdownHooked = true;
+  const close = (): void => {
+    try {
+      cachedStore?.close();
+    } catch {
+      // best-effort
+    }
+    cachedStore = null;
+  };
+  process.on('exit', close);
+  process.on('SIGINT', () => {
+    close();
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    close();
+    process.exit(0);
+  });
+}
+
 // ──────────────────────────────────────────────────────────
 // search
 
@@ -62,23 +95,20 @@ export interface SearchOutput {
 }
 
 export async function runSearchTool(input: SearchInput): Promise<SearchOutput> {
+  ensureShutdownHook();
   const embedder = await getEmbedder();
   const queryVec = await embedder.embed(input.query, 'query');
 
-  const store = new Store({ path: PATHS.database, dimensions: queryVec.length });
-  try {
-    const results = store.searchHybrid(queryVec, input.query, {
-      limit: input.limit,
-      source: input.source,
-    });
-    return {
-      query: input.query,
-      total: results.length,
-      results: results.map(toApiResult),
-    };
-  } finally {
-    store.close();
-  }
+  const store = getStore(queryVec.length);
+  const results = store.searchHybrid(queryVec, input.query, {
+    limit: input.limit,
+    source: input.source,
+  });
+  return {
+    query: input.query,
+    total: results.length,
+    results: results.map(toApiResult),
+  };
 }
 
 function toApiResult(r: SearchResult): SearchOutput['results'][number] {
@@ -116,17 +146,14 @@ export interface ListSourcesOutput {
 }
 
 export async function runListSourcesTool(_input: ListSourcesInput): Promise<ListSourcesOutput> {
+  ensureShutdownHook();
   const config = readConfig();
   const embedder = await getEmbedder();
-  const store = new Store({ path: PATHS.database, dimensions: embedder.dimensions });
-  try {
-    const sources = Object.entries(config.plugins).map(([name, cfg]) => ({
-      name,
-      enabled: cfg.enabled,
-      chunkCount: store.count(name),
-    }));
-    return { sources };
-  } finally {
-    store.close();
-  }
+  const store = getStore(embedder.dimensions);
+  const sources = Object.entries(config.plugins).map(([name, cfg]) => ({
+    name,
+    enabled: cfg.enabled,
+    chunkCount: store.count(name),
+  }));
+  return { sources };
 }

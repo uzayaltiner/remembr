@@ -52,13 +52,17 @@ export const SearchView: FC<SearchViewProps> = ({ onChoose }) => {
     <Box flexDirection="column" paddingX={1} paddingY={1}>
       <Box>
         <Text color="magenta" bold>
-          🧠 localbrain
+          remembr
         </Text>
       </Box>
 
       <Box borderStyle="round" paddingX={1} marginTop={1}>
         <Text color="cyan">› </Text>
-        <TextInput value={query} onChange={setQuery} placeholder="Search your second brain..." />
+        <TextInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search across your indexed sources..."
+        />
       </Box>
 
       <Box marginTop={1} flexDirection="column">

@@ -379,12 +379,14 @@ export const SetupView: FC<SetupViewProps> = ({ reset = false }) => {
 
 const McpStep: FC<{ onSubmit: (selected: string[]) => void }> = ({ onSubmit }) => {
   const detected = detectInstalledClients();
+  const empty = detected.length === 0;
 
-  if (detected.length === 0) {
-    // Auto-skip if nothing's detected.
-    useEffect(() => {
-      onSubmit([]);
-    }, [onSubmit]);
+  // Auto-skip if nothing's detected. Hook must run unconditionally — gate inside.
+  useEffect(() => {
+    if (empty) onSubmit([]);
+  }, [empty, onSubmit]);
+
+  if (empty) {
     return <Text dimColor>No MCP-aware clients detected. Skipping…</Text>;
   }
 

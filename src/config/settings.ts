@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { PATHS } from './paths.js';
 
 export interface OllamaConfig {
@@ -73,7 +73,15 @@ export function mergeRegisteredPlugins(
 export function ensureHome(): void {
   for (const dir of [PATHS.home, PATHS.logs, PATHS.plugins]) {
     if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+  }
+  // Tighten perms on existing dirs too — covers upgrades from older versions.
+  if (process.platform !== 'win32') {
+    try {
+      chmodSync(PATHS.home, 0o700);
+    } catch {
+      // best-effort
     }
   }
 }
@@ -93,5 +101,15 @@ export function readConfig(): BrainConfig {
 
 export function writeConfig(config: BrainConfig): void {
   ensureHome();
-  writeFileSync(PATHS.config, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+  writeFileSync(PATHS.config, `${JSON.stringify(config, null, 2)}\n`, {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  if (process.platform !== 'win32') {
+    try {
+      chmodSync(PATHS.config, 0o600);
+    } catch {
+      // best-effort
+    }
+  }
 }

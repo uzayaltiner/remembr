@@ -193,7 +193,7 @@ remembr serve                               Start MCP server on stdio
         ▼                         ▼
 ┌────────────────┐       ┌────────────────────┐
 │  Embedder      │       │  Store             │
-│  (Transformers │       │  bun:sqlite +      │
+│  (Transformers │       │  better-sqlite3 +  │
 │   .js / Ollama)│       │  sqlite-vec + FTS5 │
 └────────────────┘       └────────┬───────────┘
                                   │

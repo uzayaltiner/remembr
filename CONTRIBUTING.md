@@ -32,7 +32,7 @@ src/
 ├── config/                ~/.remembr/ paths + JSON config helpers
 ├── core/
 │   ├── embedder/          Embedder interface + transformers.js / ollama backends
-│   └── store.ts           bun:sqlite + sqlite-vec + FTS5 wrapper
+│   └── store.ts           better-sqlite3 + sqlite-vec + FTS5 wrapper
 ├── mcp/                   MCP server + tool handlers (`search`, `list_sources`)
 ├── plugins/
 │   ├── types.ts           Plugin contract — read this first
@@ -41,7 +41,7 @@ src/
 ├── ui/                    Ink-based interactive TUI (opt-in via no-arg CLI)
 └── utils/                 Logger, progress, etc.
 tests/                     Mirrors src/ for tests
-scripts/                   One-off scripts (build, spike)
+tests/                     Mirrors src/ for unit tests
 ```
 
 ## Writing a new source plugin
@@ -49,7 +49,7 @@ scripts/                   One-off scripts (build, spike)
 A plugin is a single `Plugin` object exported from `src/plugins/<name>/index.ts`.
 
 ```ts
-import type { Document, IngestContext, Plugin } from '../types.ts';
+import type { Document, IngestContext, Plugin } from '../types.js';
 
 export const myPlugin: Plugin = {
   name: 'mysource',
@@ -78,7 +78,7 @@ export const myPlugin: Plugin = {
 Then register it in `src/plugins/index.ts`:
 
 ```ts
-import { myPlugin } from './mysource/index.ts';
+import { myPlugin } from './mysource/index.js';
 
 export function bootstrapPlugins(): void {
   // ...
@@ -111,7 +111,7 @@ knows to attach a watcher.
 ## Pull requests
 
 - One change per PR.
-- Run `bun run typecheck && bun run lint && bun test` before opening.
+- Run `npm run typecheck && npm run lint && npm test` before opening.
 - For new plugins, add at least a parser-level unit test covering the
   fingerprint / parse logic.
 
@@ -119,7 +119,7 @@ knows to attach a watcher.
 
 Please include:
 
-- macOS version + Bun version (`bun --version`)
+- macOS version + Node version (`node --version`)
 - Output of `remembr status`
 - The exact CLI invocation
 - The last ~20 lines of `~/.remembr/logs/<today>.log` if it's a runtime

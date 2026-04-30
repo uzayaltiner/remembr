@@ -62,6 +62,9 @@ const CLINE_CONFIG = join(CLINE_GLOBAL_STORAGE, 'settings', 'cline_mcp_settings.
  * Returns true if `command -v <name>` exits 0.
  */
 function commandExists(name: string): boolean {
+  // Defensive: only allow safe binary-name chars to avoid shell injection
+  // even though all current call sites pass hardcoded literals.
+  if (!/^[A-Za-z0-9._-]+$/.test(name)) return false;
   try {
     execSync(`command -v ${name}`, { stdio: 'ignore' });
     return true;
