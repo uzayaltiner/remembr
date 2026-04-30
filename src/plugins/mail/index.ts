@@ -80,6 +80,7 @@ export const mailPlugin: Plugin = {
   description: 'Indexes Apple Mail messages directly from ~/Library/Mail (macOS).',
 
   async isAvailable(): Promise<boolean> {
+    if (process.platform !== 'darwin') return false;
     return existsSync(MAIL_ROOT) && findLatestVersionDir() !== null;
   },
 
@@ -164,7 +165,18 @@ export const mailPlugin: Plugin = {
         }
         if (result.kind === 'empty') continue;
 
-        yield emailToDocument(result.email, result.filePath, result.mtimeMs);
+        // Defensive: a bug in emailToDocument (or unexpected payload)
+        // shouldn't take the whole plugin down — log and continue.
+        try {
+          yield emailToDocument(result.email, result.filePath, result.mtimeMs);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          ctx.onProgress?.({
+            current,
+            total,
+            message: `⚠ Skipped ${basename(result.filePath)}: ${reason}`,
+          });
+        }
       }
 
       if (current % 25 < FILE_READ_CONCURRENCY || i === 0) {

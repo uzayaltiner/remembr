@@ -225,10 +225,19 @@ API providers (Voyage, OpenAI) are on the roadmap.
 
 ## Privacy
 
-- All embeddings run **on your machine**. No data ever leaves the device.
-- Configuration + index live in `~/.remembr/`.
+- All embeddings run **on your machine**. Embeddings, the index, and
+  every plugin's intermediate state stay local.
+- Configuration + index live in `~/.remembr/` (`0o700`); the config
+  file itself is `0o600`.
 - Plugin secrets (e.g. future API tokens) live in `~/.remembr/secrets.json`, ignored by `.gitignore`.
-- `remembr` makes **zero outbound network calls** in the default configuration. The first run downloads the embedding model from Hugging Face, then never again.
+- `remembr` itself **never calls remembr-controlled servers**.
+  The only network egress is from services *you* opt into:
+  - Hugging Face for the one-shot embedding-model download on first run
+    (cached forever after)
+  - the `github` plugin, which shells out to your locally-installed
+    `gh` CLI to read your stars + recent issues / PRs
+  - the `ollama` provider when you switch to it (talks to the Ollama
+    daemon you configured)
 
 ---
 

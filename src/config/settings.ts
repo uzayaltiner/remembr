@@ -7,8 +7,8 @@ export interface OllamaConfig {
 }
 
 export interface EmbedderConfig {
-  /** Provider id: 'ollama' (today), 'transformers', 'voyage', 'openai' (later). */
-  provider: 'ollama' | 'transformers' | 'voyage' | 'openai';
+  /** Provider id. Voyage / OpenAI are roadmap items; not implemented yet. */
+  provider: 'transformers' | 'ollama';
   /** Provider-specific model id; falls back to ollama.model when provider==='ollama'. */
   model?: string;
 }
@@ -26,7 +26,7 @@ export interface BrainConfig {
 }
 
 export const DEFAULT_CONFIG: BrainConfig = {
-  version: '0.1.0',
+  version: '1.0.0',
   ollama: {
     host: 'http://localhost:11434',
     model: 'nomic-embed-text',

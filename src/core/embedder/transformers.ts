@@ -16,12 +16,53 @@
  *   - Xenova/paraphrase-multilingual-MiniLM-L12-v2 (384 dims, sentence-level)
  */
 
+import { existsSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import {
   type FeatureExtractionPipeline,
   type ProgressCallback,
   pipeline,
 } from '@huggingface/transformers';
 import { type EmbedTask, type Embedder, EmbedderError } from './types.js';
+
+/** Classifies a thrown error from `pipeline()` so we can decide retry strategy. */
+function classifyPipelineError(err: unknown): 'network' | 'cache' | 'unknown' {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (
+    msg.includes('enotfound') ||
+    msg.includes('econnreset') ||
+    msg.includes('eai_again') ||
+    msg.includes('etimedout') ||
+    msg.includes('connect timeout')
+  ) {
+    return 'network';
+  }
+  if (
+    msg.includes('protobuf') ||
+    msg.includes('onnx') ||
+    msg.includes('unexpected eof') ||
+    msg.includes('checksum') ||
+    msg.includes('failed to parse')
+  ) {
+    return 'cache';
+  }
+  return 'unknown';
+}
+
+/**
+ * @huggingface/transformers caches models under
+ * `${HF_HOME ?? TRANSFORMERS_CACHE ?? ~/.cache/huggingface}/hub/models--<org>--<name>`.
+ * Returns the path or null if we can't infer it for the current model id.
+ */
+function resolveModelCacheDir(model: string): string | null {
+  const root =
+    process.env.TRANSFORMERS_CACHE ??
+    process.env.HF_HOME ??
+    join(homedir(), '.cache', 'huggingface');
+  const slug = model.includes('/') ? `models--${model.replace(/\//g, '--')}` : `models--${model}`;
+  return join(root, 'hub', slug);
+}
 
 /**
  * ONNX weight precision. Quantized variants are ~2-4× faster on Apple
@@ -87,19 +128,12 @@ export class TransformersEmbedder implements Embedder {
     if (this.pipe) return;
 
     try {
-      this.pipe = (await pipeline('feature-extraction', this.model, {
-        // q8 quantization typically gives 2-4× speedup on Apple silicon
-        // at <1% recall delta for retrieval-style use.
-        dtype: this.dtype,
-        // 'auto' picks the best available backend (webgpu/wasm/cpu).
-        // 40-60% faster on Apple silicon vs the default cpu wasm path.
-        device: 'auto',
-        progress_callback: this.onProgress,
-      })) as FeatureExtractionPipeline;
+      const pipe = await this.loadPipelineWithRecovery();
+      this.pipe = pipe;
 
       // Probe dimensions with a tiny embedding
       const probeText = `${this.prefix.document}probe`;
-      const output = await this.pipe(probeText, { pooling: 'mean', normalize: true });
+      const output = await pipe(probeText, { pooling: 'mean', normalize: true });
       const arr = output.tolist() as number[][];
       const first = arr[0];
       if (!first) {
@@ -114,6 +148,60 @@ export class TransformersEmbedder implements Embedder {
         false,
         { cause: err },
       );
+    }
+  }
+
+  /**
+   * Run `pipeline()` with one targeted retry for the two failure modes
+   * we can actually do something about: a transient network blip during
+   * the first download, or a corrupt file in the local HF cache from a
+   * prior interrupted download.
+   */
+  private async loadPipelineWithRecovery(): Promise<FeatureExtractionPipeline> {
+    const opts = {
+      dtype: this.dtype,
+      // 'auto' picks the best available backend (webgpu/wasm/cpu).
+      // 40-60% faster on Apple silicon vs the default cpu wasm path.
+      device: 'auto' as const,
+      progress_callback: this.onProgress,
+    };
+
+    try {
+      return (await pipeline('feature-extraction', this.model, opts)) as FeatureExtractionPipeline;
+    } catch (err) {
+      const kind = classifyPipelineError(err);
+
+      if (kind === 'cache') {
+        // Wipe the (likely partial) local cache and try once more — fresh
+        // download usually clears it.
+        const dir = resolveModelCacheDir(this.model);
+        if (dir && existsSync(dir)) {
+          try {
+            rmSync(dir, { recursive: true, force: true });
+            process.stderr.write(
+              `! Detected corrupt model cache at ${dir}; cleared and retrying.\n`,
+            );
+          } catch {
+            // ignore — we'll just fall through to the final throw
+          }
+        }
+        return (await pipeline(
+          'feature-extraction',
+          this.model,
+          opts,
+        )) as FeatureExtractionPipeline;
+      }
+
+      if (kind === 'network') {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new EmbedderError(
+          `Could not download model '${this.model}'.\n  ${message}\n  Check your network and retry. The download is one-shot and resumable.`,
+          true,
+          { cause: err },
+        );
+      }
+
+      throw err;
     }
   }
 

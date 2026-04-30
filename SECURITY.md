@@ -17,12 +17,13 @@ mitigation within **30 days** for confirmed issues.
 
 ## Supported Versions
 
-`remembr` is in pre-alpha. Only the most recent `0.1.x` pre-release
-receives security patches. Please update before reporting.
+The current major receives security patches. Older majors receive
+critical fixes only. Please update before reporting.
 
 | Version  | Supported |
 |----------|-----------|
-| 0.1.x    | ✓         |
+| 1.x      | ✓         |
+| 0.1.x    | critical only |
 | < 0.1.0  | ✗         |
 
 ## Scope
@@ -45,7 +46,19 @@ Out of scope:
 
 `remembr` indexes potentially sensitive local data (notes, browser
 history, mail, calendar). All embeddings and the index live on the
-user's machine; the project makes **zero outbound network calls** by
-default after the first-run embedding-model download. If you find a
-code path that violates this guarantee, please treat it as a
-high-severity report.
+user's machine.
+
+`remembr` itself **never makes calls to remembr-controlled servers**.
+Network egress only happens through services the user explicitly opts
+into:
+
+- Hugging Face (one-shot embedding-model download on first run; cached
+  forever after)
+- The `github` plugin shells out to your locally-installed `gh` CLI,
+  which talks to api.github.com on your behalf
+- The `ollama` provider, when enabled, talks to the Ollama daemon you
+  configured (default `http://localhost:11434`)
+
+If you find a code path that violates this — i.e. a default-on plugin
+or core component contacting an external service the user did not
+opt into — please treat it as a high-severity report.

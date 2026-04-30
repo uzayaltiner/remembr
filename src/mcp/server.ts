@@ -22,7 +22,7 @@ import {
 } from './tools.js';
 
 const SERVER_NAME = 'remembr';
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '1.0.0';
 
 const TOOL_DEFINITIONS = [
   {

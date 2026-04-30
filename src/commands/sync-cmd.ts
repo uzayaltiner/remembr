@@ -16,6 +16,7 @@ import {
   writeConfig,
 } from '../config/settings.js';
 import { registry } from '../plugins/registry.js';
+import { LockBusyError, acquireWriteLock } from '../utils/lock.js';
 import { type IndexEventListener, runIndex, runWatch } from './index-cmd.js';
 
 // Plugin sync order: cheap, predictable plugins first so the user gets
@@ -60,40 +61,69 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
     process.exit(1);
   }
 
-  // Auto-add slots for any newly-registered plugin so users see them
-  // (and can disable them) on the next run.
-  const registered = registry.list();
-  let config = readConfig();
-  const merge = mergeRegisteredPlugins(
-    config,
-    registered.map((p) => p.name),
-  );
-  if (merge.changed) {
-    writeConfig(merge.config);
-    config = merge.config;
-  }
-
-  const enabledPlugins = registered
-    .filter((p) => config.plugins[p.name]?.enabled !== false)
-    .sort((a, b) => orderRank(a.name) - orderRank(b.name));
-
-  if (enabledPlugins.length === 0) {
-    if (!options.onEvent) {
-      console.log('No enabled plugins.');
-      console.log('  Re-enable: remembr plugins enable <name>');
+  // Serialize against any concurrent `remembr sync` / `remembr index`.
+  // The MCP server (`serve`) is read-only and intentionally not gated.
+  let lock: { release: () => void };
+  try {
+    lock = acquireWriteLock();
+  } catch (err) {
+    if (err instanceof LockBusyError) {
+      console.error(`✗ ${err.message}`);
+      process.exit(1);
     }
-    return;
+    throw err;
   }
 
-  if (options.watch) {
-    return runWatchSync(
-      enabledPlugins.map((p) => p.name),
+  try {
+    // Auto-add slots for any newly-registered plugin so users see them
+    // (and can disable them) on the next run.
+    const registered = registry.list();
+    let config = readConfig();
+    const merge = mergeRegisteredPlugins(
       config,
+      registered.map((p) => p.name),
     );
-  }
+    if (merge.changed) {
+      writeConfig(merge.config);
+      config = merge.config;
+    }
 
+    const enabledPlugins = registered
+      .filter((p) => config.plugins[p.name]?.enabled !== false)
+      .sort((a, b) => orderRank(a.name) - orderRank(b.name));
+
+    if (enabledPlugins.length === 0) {
+      if (!options.onEvent) {
+        console.log('No enabled plugins.');
+        console.log('  Re-enable: remembr plugins enable <name>');
+      }
+      return;
+    }
+
+    if (options.watch) {
+      return await runWatchSync(
+        enabledPlugins.map((p) => p.name),
+        config,
+      );
+    }
+
+    const quiet = options.onEvent !== undefined;
+    const outcomes: PluginOutcome[] = [];
+
+    await runEnabledPlugins(enabledPlugins, options, outcomes);
+
+    if (!quiet) printSummary(outcomes);
+  } finally {
+    lock.release();
+  }
+}
+
+async function runEnabledPlugins(
+  enabledPlugins: ReadonlyArray<{ name: string; isAvailable: () => Promise<boolean> }>,
+  options: SyncOptions,
+  outcomes: PluginOutcome[],
+): Promise<void> {
   const quiet = options.onEvent !== undefined;
-  const outcomes: PluginOutcome[] = [];
 
   for (const plugin of enabledPlugins) {
     if (!quiet) console.log(`▸ ${plugin.name}`);
@@ -144,8 +174,6 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
 
     if (!quiet) console.log('');
   }
-
-  if (!quiet) printSummary(outcomes);
 }
 
 async function runWatchSync(enabledNames: string[], config: BrainConfig): Promise<void> {

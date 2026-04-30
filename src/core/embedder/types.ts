@@ -4,7 +4,8 @@
  * remembr supports multiple embedding backends:
  *   - transformers (default): bundled, offline, multilingual
  *   - ollama:                power user, GPU-accelerated, more models
- *   - voyage / openai:        opt-in API for higher quality
+ *
+ * Voyage / OpenAI are roadmap items, not implemented yet.
  *
  * All implementations satisfy this interface so the rest of the system
  * (index, search, MCP server) doesn't care which one is active.

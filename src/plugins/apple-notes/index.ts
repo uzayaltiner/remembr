@@ -60,6 +60,7 @@ export const appleNotesPlugin: Plugin = {
   description: 'Indexes Apple Notes (titles + sidebar snippets, macOS only).',
 
   async isAvailable(): Promise<boolean> {
+    if (process.platform !== 'darwin') return false;
     return existsSync(NOTESTORE_PATH);
   },
 

@@ -13,6 +13,7 @@ import { EmbedderError, createEmbedder } from '../core/embedder/index.js';
 import { Store } from '../core/store.js';
 import { registry, setPluginEnabled } from '../plugins/registry.js';
 import type { Document } from '../plugins/types.js';
+import { LockBusyError, acquireWriteLock } from '../utils/lock.js';
 import { log } from '../utils/logger.js';
 import { Progress } from '../utils/progress.js';
 
@@ -74,6 +75,26 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
     throw new IndexError("Not initialized. Run 'remembr init' first.");
   }
 
+  // Re-entrant: if `runSync` already acquired the lock for the whole sync
+  // run, this is a no-op so a single direct `remembr index <plugin>` call
+  // is the only path that takes the file lock here.
+  let lock: { release: () => void };
+  try {
+    lock = acquireWriteLock();
+  } catch (err) {
+    if (err instanceof LockBusyError) {
+      throw new IndexError(err.message);
+    }
+    throw err;
+  }
+  try {
+    await runIndexLocked(pluginName, options);
+  } finally {
+    lock.release();
+  }
+}
+
+async function runIndexLocked(pluginName: string, options: IndexOptions): Promise<void> {
   const plugin = registry.get(pluginName);
   if (!plugin) {
     throw new IndexError(
@@ -215,6 +236,20 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
 
   let pluginIterator: AsyncIterator<Document> | null = null;
 
+  // SIGINT graceful drain: on first Ctrl+C, mark the run as aborted so
+  // the iterator loop exits cleanly after flushing any inflight batch.
+  // A second Ctrl+C falls through to the default handler (hard kill).
+  let aborted = false;
+  const onSigint = (): void => {
+    if (aborted) return;
+    aborted = true;
+    if (!quiet) {
+      // Newline so the message lands below any in-flight progress bar.
+      process.stderr.write('\n⏹  Stopping after current batch (Ctrl+C again to force-quit)…\n');
+    }
+  };
+  process.on('SIGINT', onSigint);
+
   try {
     pluginIterator = plugin
       .ingest({
@@ -242,6 +277,7 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
       [Symbol.asyncIterator]();
 
     while (true) {
+      if (aborted) break;
       let next: IteratorResult<Document>;
       try {
         next = await pluginIterator.next();
@@ -281,8 +317,10 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
 
     // Stale cleanup: documents that exist in the store but weren't yielded
     // by the plugin this run are gone (file deleted, history pruned, etc).
-    // Skip cleanup if --reset was used (we already wiped the source above).
-    if (!options.reset) {
+    // Skip cleanup if --reset was used (we already wiped the source above)
+    // OR if the run was aborted — partial seenDocumentIds would otherwise
+    // delete still-valid records.
+    if (!options.reset && !aborted) {
       const stored = store.listDocumentIds(pluginName);
       for (const docId of stored) {
         if (!seenDocumentIds.has(docId)) {
@@ -295,7 +333,12 @@ export async function runIndex(pluginName: string, options: IndexOptions = {}): 
       }
     }
   } finally {
+    process.off('SIGINT', onSigint);
     store.close();
+  }
+
+  if (aborted) {
+    throw new IndexError('Indexing aborted by user (SIGINT). Partial progress was saved.');
   }
 
   const elapsedMs = Date.now() - startedAt;

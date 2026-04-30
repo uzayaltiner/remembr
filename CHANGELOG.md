@@ -5,6 +5,93 @@ loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-04-30
+
+First stable release. The plugin contract, MCP tool surface, CLI
+flags, and on-disk schema are now committed to — breaking changes
+will only ship in a future major.
+
+### Added
+
+- **`remembr db repair`** quarantines a corrupt or unreadable
+  `~/.remembr/db.sqlite` (and its `-wal` / `-shm` siblings) so the
+  next `remembr sync` can rebuild the index from your sources. The
+  user's actual data — notes, mail, browser history, … — is never
+  touched, so the index is always reproducible.
+- **Pre-migration snapshots.** Before applying any schema upgrade
+  to an existing index, `remembr` now writes a
+  `db.sqlite.pre-v<n>` snapshot via `VACUUM INTO`. A half-completed
+  migration leaves a recoverable copy behind.
+- **`PRAGMA integrity_check` on open.** Corrupt files surface a
+  clear `StoreOpenError` pointing at `remembr db repair` instead of
+  a raw better-sqlite3 stack trace.
+- **`~/.remembr/sync.lock` advisory lock.** `remembr sync` and
+  `remembr index <plugin>` now serialize against each other so two
+  parallel write commands can't trample each other's stale-cleanup
+  pass. The MCP server (`remembr serve`) stays read-only and is
+  intentionally not gated.
+- **GitHub issue templates + CODE_OF_CONDUCT.md** for first-time
+  contributors.
+
+### Changed
+
+- **`EmbedderConfig.provider` is now `'transformers' | 'ollama'`.**
+  The `'voyage'` and `'openai'` slots were typed-permitted but
+  threw at runtime in 0.1; they're moved out of the public type
+  until they actually ship. Existing config files that pinned them
+  fall through to a clear "unknown provider" error.
+- **`mcp install` writes are atomic.** Config files (`~/.claude.json`
+  and friends) are written to a sibling `.tmp-<pid>-<ts>` and then
+  `rename()`d into place. A backup is required to succeed before the
+  rename — if the backup fails, the install is aborted. Files larger
+  than 50 MB are refused with a friendly message rather than parsed
+  and rewritten.
+- **Schema migrations are transactional.** Each version step
+  (`v1 → v2`, `v2 → v3`) runs inside `db.transaction()`, with the
+  matching `PRAGMA user_version` bumped in the same envelope so a
+  crash mid-step can't leave a half-applied schema.
+- **Per-doc plugin failure isolation.** `mail` and `browser` now
+  catch errors per-document inside their iterator and emit a `⚠`
+  warning to the progress stream instead of taking the whole plugin
+  down. (`fs` and `pdf` already worked this way.)
+- **`fs` and `pdf` stream their globs.** Pathological trees with
+  millions of paths under user-set roots no longer OOM the process;
+  matches are streamed with `globIterate` and capped at 200 000 (fs)
+  or 50 000 (pdf).
+- **PDF parse timeout.** Each PDF is given a one-minute hard budget;
+  malformed files that would otherwise wedge `pdf-parse` are skipped
+  with `pdf-parse timed out after 60000ms`.
+- **Embedder dimension probe on `Store` open.** Switching to a
+  different embedding model without `--reset` now fails fast with a
+  helpful message instead of silently inserting mismatched vectors.
+- **Embedding-model download has one targeted retry.** Corrupt local
+  HF cache from an interrupted download is detected, wiped, and the
+  download is retried once. Genuine network failures surface as a
+  recoverable `EmbedderError`.
+- **macOS-only plugins gate by `process.platform === 'darwin'`.**
+  Apple Notes / Calendar / Mail / Claude.app / browser-history all
+  short-circuit on Linux and Windows so non-macOS users see "skipped:
+  not available" instead of confusing path errors.
+- **`remembr index` honours SIGINT.** First Ctrl+C drains the
+  in-flight batch, closes the store cleanly, and exits with
+  `Indexing aborted by user (SIGINT). Partial progress was saved.`
+  A second Ctrl+C falls through to a hard kill.
+- **Privacy claim restated.** README + SECURITY.md no longer claim
+  zero outbound network calls in absolute terms; instead the
+  guarantee is scoped to "no calls to remembr-controlled servers"
+  and the user-opt-in egress points (Hugging Face, `gh`, Ollama)
+  are listed explicitly.
+
+### Tests
+
+- New: `searchHybrid` RRF semantics (semantic-only, FTS-only,
+  fusion ordering, source filter, FTS metachar fallback).
+- New: schema migration round-trips (`v1 → v3`, `v2 → v3`,
+  idempotent re-open, pre-v snapshot, future-version refusal).
+- New: corruption-recovery probe (`Store` of a non-SQLite file
+  throws `StoreOpenError` and points at `remembr db repair`).
+- New: `acquireWriteLock` create / stale-reclaim / re-entrancy.
+
 ## [0.1.0] — 2026-04-29
 
 First public release. The pre-alpha 0.1.0-pre.\* line had a public

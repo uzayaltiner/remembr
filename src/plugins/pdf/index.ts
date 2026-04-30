@@ -14,7 +14,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
-import { glob } from 'glob';
+import { globIterate } from 'glob';
 import type { Document, IngestContext, Plugin } from '../types.js';
 import { parsePdf } from './parser.js';
 
@@ -55,6 +55,10 @@ const IGNORE_PATTERNS = [
 // scanned books). Skip rather than block sync for minutes per file.
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
+// Per-file parse budget. Malformed PDFs can wedge pdf-parse on a regex
+// loop indefinitely; cap each file at one minute and move on.
+const PARSE_TIMEOUT_MS = 60_000;
+
 // 3-way concurrent parse. pdf-parse is CPU-bound JS work; running 3 in
 // parallel lets us interleave the parses with embedding I/O. Higher than
 // 3 starts blowing memory on big books.
@@ -91,22 +95,38 @@ export const pdfPlugin: Plugin = {
       );
     }
 
+    // Stream the glob output instead of buffering the full list — protects
+    // against ridiculous trees with millions of paths under user-set roots.
+    const MAX_FILES = 50_000;
     const allFiles: string[] = [];
-    for (const dir of paths) {
-      const matches = await glob(GLOB_PATTERN, {
+    let truncated = false;
+    outer: for (const dir of paths) {
+      for await (const match of globIterate(GLOB_PATTERN, {
         cwd: dir,
         absolute: true,
         nodir: true,
         dot: false,
         ignore: IGNORE_PATTERNS,
-      });
-      allFiles.push(...matches);
+      })) {
+        allFiles.push(match);
+        if (allFiles.length >= MAX_FILES) {
+          truncated = true;
+          break outer;
+        }
+      }
     }
 
     const total = allFiles.length;
     let current = 0;
 
     ctx.onProgress?.({ current, total, message: `Found ${total} PDF files` });
+    if (truncated) {
+      ctx.onProgress?.({
+        current,
+        total,
+        message: `⚠ Truncated to ${MAX_FILES} PDFs; narrow the configured paths to index more.`,
+      });
+    }
 
     // 3-way concurrent parse. pdf-parse is CPU-bound; running 3 at once
     // overlaps each parse with the upstream readFile and the downstream
@@ -188,13 +208,36 @@ async function parseOne(filePath: string): Promise<ParseOneResult> {
       };
     }
     const buffer = await readFile(filePath);
-    const parsed = await parsePdf(buffer);
+    const parsed = await withTimeout(parsePdf(buffer), PARSE_TIMEOUT_MS);
     if (parsed.chunks.length === 0) return { kind: 'empty', filePath };
     return { kind: 'ok', filePath, parsed, mtimeMs: stats.mtimeMs, size: stats.size };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     return { kind: 'skip', filePath, reason };
   }
+}
+
+/**
+ * Race a promise against a timeout. The losing branch leaks until the
+ * underlying work resolves, but we don't await it — fine for our use
+ * case (one bad PDF per run, GC eventually reclaims).
+ */
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`pdf-parse timed out after ${ms}ms`));
+    }, ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
 }
 
 function expandPath(p: string): string {

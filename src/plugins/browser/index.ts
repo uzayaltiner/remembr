@@ -68,6 +68,10 @@ export const browserPlugin: Plugin = {
   description: 'Indexes browser history (Chrome, Safari, Arc, Brave, Edge, Vivaldi).',
 
   async isAvailable(): Promise<boolean> {
+    // Browser discovery probes ~/Library paths today; Linux/Windows
+    // path layouts aren't wired up yet, so report unavailable rather
+    // than throwing inside ingest().
+    if (process.platform !== 'darwin') return false;
     return discoverBrowsers().length > 0;
   },
 
@@ -138,33 +142,46 @@ export const browserPlugin: Plugin = {
 
     ctx.onProgress?.({ current, total, message: `Yielding ${total} unique URLs` });
 
-    // Phase 3: yield Documents.
+    // Phase 3: yield Documents. Per-entry try/catch keeps a single
+    // malformed URL or null-titled row from aborting the whole plugin.
     for (const entry of deduped) {
       if (ctx.signal?.aborted) return;
       current++;
 
-      const title = entry.title || hostname(entry.url) || entry.url;
-      // Use a clean URL form (host + path, no querystring) for display in
-      // the embedding signal. Display URL stays full so the user can click.
-      const cleanUrl = stripQuery(entry.url);
-      // Many URLs carry a human-readable slug ("/Dyson-Piston-Animal-Süpürge/...")
-      // that is the only real description we have when the title is generic.
-      const slug = urlSlug(entry.url);
-      const embeddingContent = slug ? `${title}\n${slug}\n${cleanUrl}` : `${title}\n${cleanUrl}`;
+      let doc: Document | null = null;
+      try {
+        const title = entry.title || hostname(entry.url) || entry.url;
+        // Use a clean URL form (host + path, no querystring) for display in
+        // the embedding signal. Display URL stays full so the user can click.
+        const cleanUrl = stripQuery(entry.url);
+        // Many URLs carry a human-readable slug ("/Dyson-Piston-Animal-Süpürge/...")
+        // that is the only real description we have when the title is generic.
+        const slug = urlSlug(entry.url);
+        const embeddingContent = slug ? `${title}\n${slug}\n${cleanUrl}` : `${title}\n${cleanUrl}`;
 
-      yield {
-        id: entry.url,
-        title,
-        content: embeddingContent,
-        url: entry.url,
-        timestamp: entry.lastVisitTime,
-        // Visit count + timestamp: re-index when user has new visits since last run
-        fingerprint: `v${entry.visitCount}-${entry.lastVisitTime}`,
-        metadata: {
-          browser: entry.browser,
-          visitCount: entry.visitCount,
-        },
-      };
+        doc = {
+          id: entry.url,
+          title,
+          content: embeddingContent,
+          url: entry.url,
+          timestamp: entry.lastVisitTime,
+          // Visit count + timestamp: re-index when user has new visits since last run
+          fingerprint: `v${entry.visitCount}-${entry.lastVisitTime}`,
+          metadata: {
+            browser: entry.browser,
+            visitCount: entry.visitCount,
+          },
+        };
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        ctx.onProgress?.({
+          current,
+          total,
+          message: `⚠ Skipped ${entry.url}: ${reason}`,
+        });
+      }
+
+      if (doc) yield doc;
 
       if (current % 200 === 0) {
         ctx.onProgress?.({ current, total, message: `Embedded ${current}/${total}` });

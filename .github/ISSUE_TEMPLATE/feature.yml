@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a new capability, source plugin, or workflow.
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is the user-visible problem you're trying to solve?
+      placeholder: I want Claude to recall <X> but remembr currently doesn't index it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would it look from the user's perspective?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've already tried.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This is a new source plugin.
+        - label: This is a CLI / MCP tool change.
+        - label: This is a config / setup change.

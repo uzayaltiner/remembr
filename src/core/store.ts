@@ -16,6 +16,22 @@ type Statement = Database.Statement;
 
 const SCHEMA_VERSION = 3;
 
+/**
+ * Thrown when the underlying SQLite file can't be opened, the sqlite-vec
+ * extension can't be loaded, or `PRAGMA integrity_check` reports damage.
+ * Carries a human-readable hint pointing at `remembr db repair`.
+ */
+export class StoreOpenError extends Error {
+  constructor(
+    message: string,
+    public readonly kind: 'open' | 'extension' | 'integrity' | 'dimensions' | 'migration',
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'StoreOpenError';
+  }
+}
+
 export interface ChunkInput {
   source: string; // plugin name: 'markdown', 'browser', ...
   documentId: string; // plugin-side stable id (e.g., file path)
@@ -95,19 +111,84 @@ export class Store {
   constructor(options: StoreOptions) {
     this.dimensions = options.dimensions ?? 768;
 
-    this.db = new Database(options.path);
-    this.db.exec('PRAGMA journal_mode = WAL');
-    this.db.exec('PRAGMA synchronous = NORMAL');
-    this.db.exec('PRAGMA foreign_keys = ON');
-    // Wait up to 10s for another writer (e.g. the MCP server running in
-    // parallel) to release a lock instead of failing immediately with
-    // SQLITE_BUSY. Index runs are bursty enough that this almost always
-    // succeeds inside the window.
-    this.db.exec('PRAGMA busy_timeout = 10000');
+    try {
+      this.db = new Database(options.path);
+    } catch (err) {
+      throw new StoreOpenError(
+        `Could not open SQLite database at ${options.path}.\n  ${describeErr(err)}\n  Try: remembr db repair`,
+        'open',
+        { cause: err },
+      );
+    }
 
-    this.db.loadExtension(sqliteVec.getLoadablePath());
+    try {
+      this.db.exec('PRAGMA journal_mode = WAL');
+      this.db.exec('PRAGMA synchronous = NORMAL');
+      this.db.exec('PRAGMA foreign_keys = ON');
+      // Wait up to 10s for another writer (e.g. the MCP server running in
+      // parallel) to release a lock instead of failing immediately with
+      // SQLITE_BUSY. Index runs are bursty enough that this almost always
+      // succeeds inside the window.
+      this.db.exec('PRAGMA busy_timeout = 10000');
+    } catch (err) {
+      this.safeClose();
+      throw new StoreOpenError(
+        `Failed to set SQLite pragmas on ${options.path}.\n  ${describeErr(err)}\n  Try: remembr db repair`,
+        'open',
+        { cause: err },
+      );
+    }
 
-    this.applySchema();
+    try {
+      this.db.loadExtension(sqliteVec.getLoadablePath());
+    } catch (err) {
+      this.safeClose();
+      throw new StoreOpenError(
+        `Could not load sqlite-vec extension.\n  ${describeErr(err)}\n  This is a build problem; please file a bug with your platform.`,
+        'extension',
+        { cause: err },
+      );
+    }
+
+    // Cheap integrity probe — runs in milliseconds for a fresh DB and
+    // surfaces obvious corruption before we touch user data.
+    try {
+      const row = this.db.prepare('PRAGMA integrity_check').get() as
+        | { integrity_check: string }
+        | undefined;
+      const verdict = row?.integrity_check ?? '';
+      if (verdict !== 'ok') {
+        this.safeClose();
+        throw new StoreOpenError(
+          `SQLite integrity check failed: ${verdict}\n  Run: remembr db repair  (quarantines the corrupt file and rebuilds)`,
+          'integrity',
+        );
+      }
+    } catch (err) {
+      if (err instanceof StoreOpenError) throw err;
+      this.safeClose();
+      throw new StoreOpenError(
+        `SQLite integrity check raised: ${describeErr(err)}\n  Try: remembr db repair`,
+        'integrity',
+        { cause: err },
+      );
+    }
+
+    try {
+      this.applySchema();
+    } catch (err) {
+      this.safeClose();
+      throw new StoreOpenError(
+        `Schema migration failed.\n  ${describeErr(err)}\n  Try: remembr db repair  (will quarantine the current DB and start fresh)`,
+        'migration',
+        { cause: err },
+      );
+    }
+
+    // Verify any pre-existing embedding rows match the configured
+    // dimensions — switching models without --reset would otherwise
+    // silently insert mismatched vectors.
+    this.assertExistingDimensions();
 
     this.insertChunkStmt = this.db.prepare(`
       INSERT INTO chunks (
@@ -353,7 +434,35 @@ export class Store {
   }
 
   close(): void {
-    this.db.close();
+    this.safeClose();
+  }
+
+  private safeClose(): void {
+    try {
+      this.db?.close();
+    } catch {
+      // best-effort
+    }
+  }
+
+  /**
+   * Inspect any existing chunk_embeddings row and fail loudly if its
+   * dimensionality doesn't match the embedder we're configured with —
+   * mixing dim-N and dim-M vectors silently corrupts kNN results.
+   */
+  private assertExistingDimensions(): void {
+    const row = this.db
+      .prepare('SELECT length(embedding) AS bytes FROM chunk_embeddings LIMIT 1')
+      .get() as { bytes: number } | undefined;
+    if (!row) return; // empty store — nothing to verify
+    const observed = row.bytes / 4; // float32 = 4 bytes per dim
+    if (observed !== this.dimensions) {
+      this.safeClose();
+      throw new StoreOpenError(
+        `Embedding dimension mismatch: existing index has ${observed} dims, configured embedder produces ${this.dimensions} dims.\n  Run: remembr config provider <name> --reset  (wipes index)`,
+        'dimensions',
+      );
+    }
   }
 
   private applySchema(): void {
@@ -363,56 +472,48 @@ export class Store {
     const currentVersion = versionRow?.user_version ?? 0;
 
     if (currentVersion === 0) {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS chunks (
-          id           INTEGER PRIMARY KEY AUTOINCREMENT,
-          source       TEXT NOT NULL,
-          document_id  TEXT NOT NULL,
-          chunk_index  INTEGER NOT NULL,
-          title        TEXT NOT NULL,
-          content      TEXT NOT NULL,
-          url          TEXT,
-          timestamp    INTEGER NOT NULL,
-          metadata     TEXT NOT NULL DEFAULT '{}',
-          fingerprint  TEXT NOT NULL DEFAULT '',
-          created_at   INTEGER NOT NULL
-        );
+      // Fresh database — initial schema in a single transaction.
+      const init = this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS chunks (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            source       TEXT NOT NULL,
+            document_id  TEXT NOT NULL,
+            chunk_index  INTEGER NOT NULL,
+            title        TEXT NOT NULL,
+            content      TEXT NOT NULL,
+            url          TEXT,
+            timestamp    INTEGER NOT NULL,
+            metadata     TEXT NOT NULL DEFAULT '{}',
+            fingerprint  TEXT NOT NULL DEFAULT '',
+            created_at   INTEGER NOT NULL
+          );
 
-        CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);
-        CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(source, document_id);
-        CREATE INDEX IF NOT EXISTS idx_chunks_timestamp ON chunks(timestamp DESC);
-      `);
+          CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);
+          CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(source, document_id);
+          CREATE INDEX IF NOT EXISTS idx_chunks_timestamp ON chunks(timestamp DESC);
 
-      // Cascade delete from chunks -> chunk_embeddings
-      // (chunk_embeddings is a virtual table, no FK; we trigger manually)
-      this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings USING vec0(
-          embedding float[${this.dimensions}]
-        );
-      `);
+          CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings USING vec0(
+            embedding float[${this.dimensions}]
+          );
 
-      // FTS5 contentless table for keyword search. We mirror chunks.id as
-      // the FTS rowid and keep the content there too (contentless 'content='
-      // mode is faster but reduces flexibility; we keep flexibility for now).
-      this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
-          title,
-          content,
-          tokenize = 'unicode61 remove_diacritics 2'
-        );
-      `);
+          CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
+            title,
+            content,
+            tokenize = 'unicode61 remove_diacritics 2'
+          );
 
-      // Cascade delete: chunks → chunk_embeddings + chunk_fts
-      this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS chunks_after_delete
-        AFTER DELETE ON chunks
-        BEGIN
-          DELETE FROM chunk_embeddings WHERE rowid = OLD.id;
-          DELETE FROM chunk_fts WHERE rowid = OLD.id;
-        END;
-      `);
+          CREATE TRIGGER IF NOT EXISTS chunks_after_delete
+          AFTER DELETE ON chunks
+          BEGIN
+            DELETE FROM chunk_embeddings WHERE rowid = OLD.id;
+            DELETE FROM chunk_fts WHERE rowid = OLD.id;
+          END;
 
-      this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+          PRAGMA user_version = ${SCHEMA_VERSION};
+        `);
+      });
+      init();
       return;
     }
 
@@ -422,45 +523,82 @@ export class Store {
       );
     }
 
-    // v1 → v2: add fingerprint column for incremental indexing
+    if (currentVersion >= SCHEMA_VERSION) return;
+
+    // We have data on disk and we need to migrate. Snapshot the file
+    // first so a half-migration leaves a recoverable copy behind.
+    this.snapshotForMigration(currentVersion);
+
+    // v1 → v2: add fingerprint column for incremental indexing.
     if (currentVersion < 2) {
-      this.db.exec(`
-        ALTER TABLE chunks ADD COLUMN fingerprint TEXT NOT NULL DEFAULT '';
-      `);
-      this.db.exec('PRAGMA user_version = 2');
+      const v1to2 = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE chunks ADD COLUMN fingerprint TEXT NOT NULL DEFAULT '';
+          PRAGMA user_version = 2;
+        `);
+      });
+      v1to2();
     }
 
-    // v2 → v3: add FTS5 keyword index + rebuild trigger
+    // v2 → v3: add FTS5 keyword index + rebuild trigger.
     if (currentVersion < 3) {
-      this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
-          title,
-          content,
-          tokenize = 'unicode61 remove_diacritics 2'
-        );
-      `);
-      // Backfill FTS index from existing chunks
-      this.db.exec(`
-        INSERT INTO chunk_fts (rowid, title, content)
-        SELECT id, title, content FROM chunks;
-      `);
-      // Replace the cascade trigger to also clean FTS rows
-      this.db.exec('DROP TRIGGER IF EXISTS chunks_after_delete');
-      this.db.exec(`
-        CREATE TRIGGER chunks_after_delete
-        AFTER DELETE ON chunks
-        BEGIN
-          DELETE FROM chunk_embeddings WHERE rowid = OLD.id;
-          DELETE FROM chunk_fts WHERE rowid = OLD.id;
-        END;
-      `);
-      this.db.exec('PRAGMA user_version = 3');
+      const v2to3 = this.db.transaction(() => {
+        this.db.exec(`
+          CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
+            title,
+            content,
+            tokenize = 'unicode61 remove_diacritics 2'
+          );
+
+          INSERT INTO chunk_fts (rowid, title, content)
+          SELECT id, title, content FROM chunks;
+
+          DROP TRIGGER IF EXISTS chunks_after_delete;
+
+          CREATE TRIGGER chunks_after_delete
+          AFTER DELETE ON chunks
+          BEGIN
+            DELETE FROM chunk_embeddings WHERE rowid = OLD.id;
+            DELETE FROM chunk_fts WHERE rowid = OLD.id;
+          END;
+
+          PRAGMA user_version = 3;
+        `);
+      });
+      v2to3();
+    }
+  }
+
+  /**
+   * Take an atomic snapshot of the live DB into `<path>.pre-v<n>` before
+   * mutating its schema. Uses `VACUUM INTO` so WAL state is collapsed
+   * into a single self-contained file. Best-effort — a snapshot failure
+   * shouldn't block migration, so we log via stderr instead of throwing.
+   */
+  private snapshotForMigration(currentVersion: number): void {
+    const filename = (this.db as DatabaseType).name;
+    if (!filename || filename === ':memory:' || filename === '') return;
+    const dst = `${filename}.pre-v${currentVersion}`;
+    try {
+      // Replace any older snapshot for the same fromVersion so we always
+      // have the most recent pre-migration state.
+      this.db.exec('PRAGMA wal_checkpoint(FULL)');
+      // VACUUM INTO requires a literal path; escape single quotes.
+      const escaped = dst.replace(/'/g, "''");
+      this.db.exec(`VACUUM INTO '${escaped}'`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`! Could not snapshot DB before migration to ${dst}: ${msg}\n`);
     }
   }
 }
 
 function toFloat32Buffer(vector: number[]): Buffer {
   return Buffer.from(new Float32Array(vector).buffer);
+}
+
+function describeErr(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**

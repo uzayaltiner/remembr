@@ -76,14 +76,12 @@ export interface ConfigProviderOptions {
   reset?: boolean;
 }
 
-const VALID_PROVIDERS = ['transformers', 'ollama', 'voyage', 'openai'] as const;
+const VALID_PROVIDERS = ['transformers', 'ollama'] as const;
 type ProviderName = (typeof VALID_PROVIDERS)[number];
 
 const DEFAULT_PROVIDER_MODEL: Record<ProviderName, string> = {
   transformers: 'Xenova/multilingual-e5-small',
   ollama: 'nomic-embed-text',
-  voyage: 'voyage-3',
-  openai: 'text-embedding-3-small',
 };
 
 export function runConfigProvider(provider: string, options: ConfigProviderOptions = {}): void {

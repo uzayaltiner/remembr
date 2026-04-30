@@ -28,7 +28,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { glob } from 'glob';
+import { globIterate } from 'glob';
 import type { Document, IngestContext, Plugin } from '../types.js';
 import { parseMarkdown } from './parser.js';
 import { chunkText } from './text-chunker.js';
@@ -151,22 +151,40 @@ export const fsPlugin: Plugin = {
       config.extensions && config.extensions.length > 0 ? config.extensions : DEFAULT_EXTENSIONS;
     const globPatterns = buildGlobs(exts);
 
+    // Stream matches instead of materialising the full list. Pathological
+    // trees (1M+ files under ~/Documents) used to OOM here when we built
+    // an array up-front. We still cap the absolute number of yielded paths
+    // to bound the per-run cost.
+    const MAX_FILES = 200_000;
     const allFiles: string[] = [];
-    for (const dir of paths) {
-      const matches = await glob(globPatterns, {
+    let truncated = false;
+    outer: for (const dir of paths) {
+      for await (const match of globIterate(globPatterns, {
         cwd: dir,
         absolute: true,
         nodir: true,
         dot: false,
         ignore: IGNORE_PATTERNS,
-      });
-      allFiles.push(...matches);
+      })) {
+        allFiles.push(match);
+        if (allFiles.length >= MAX_FILES) {
+          truncated = true;
+          break outer;
+        }
+      }
     }
 
     const total = allFiles.length;
     let current = 0;
 
     ctx.onProgress?.({ current, total, message: `Found ${total} files` });
+    if (truncated) {
+      ctx.onProgress?.({
+        current,
+        total,
+        message: `⚠ Truncated to ${MAX_FILES} files; tighten paths or extensions to index more.`,
+      });
+    }
 
     for (const filePath of allFiles) {
       if (ctx.signal?.aborted) return;

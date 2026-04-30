@@ -13,7 +13,16 @@
  */
 
 import { execSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -122,12 +131,39 @@ export function detectInstalledClients(clients: McpClient[] = SUPPORTED_CLIENTS)
   return clients.filter((c) => c.isInstalled());
 }
 
+// Refuse to parse client configs larger than this — pathological cases
+// (e.g. ~/.claude.json grown to 100MB+ from conversation logs) would
+// otherwise OOM small machines mid-install.
+const MAX_CLIENT_CONFIG_BYTES = 50 * 1024 * 1024;
+
 export function installMcpFor(client: McpClient): InstallResult {
   // Read existing config (or {} if missing).
   let existing: Record<string, unknown> = {};
   let preExisted = false;
   if (existsSync(client.configPath)) {
     preExisted = true;
+
+    let bytes: number;
+    try {
+      bytes = statSync(client.configPath).size;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        client: client.name,
+        configPath: client.configPath,
+        status: 'skipped',
+        reason: `could not stat existing config: ${message}`,
+      };
+    }
+    if (bytes > MAX_CLIENT_CONFIG_BYTES) {
+      return {
+        client: client.name,
+        configPath: client.configPath,
+        status: 'skipped',
+        reason: `existing config is ${(bytes / 1024 / 1024).toFixed(1)}MB; refusing to rewrite something this large. Edit it manually and add the remembr entry.`,
+      };
+    }
+
     try {
       existing = JSON.parse(readFileSync(client.configPath, 'utf-8')) as Record<string, unknown>;
     } catch (err) {
@@ -158,19 +194,47 @@ export function installMcpFor(client: McpClient): InstallResult {
   servers.remembr = { ...REMEMBR_ENTRY };
 
   // Backup the original file once before the first write per session.
+  // Required when overwriting — if the backup fails we abort instead of
+  // leaving the user without a recovery path.
   if (preExisted) {
     const backupPath = `${client.configPath}.bak-${Date.now()}`;
     try {
       copyFileSync(client.configPath, backupPath);
-    } catch {
-      // Backup is nice-to-have; don't fail install if it can't be written.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        client: client.name,
+        configPath: client.configPath,
+        status: 'skipped',
+        reason: `could not write backup ${backupPath}: ${message}`,
+      };
     }
   }
 
   // Make sure the parent directory exists for clients (e.g. cline) whose
   // config dir might not have been created yet.
   mkdirSync(dirname(client.configPath), { recursive: true });
-  writeFileSync(client.configPath, `${JSON.stringify(existing, null, 2)}\n`, 'utf-8');
+
+  // Atomic write: tmpfile in same dir, then rename(). If we crash between
+  // steps the original file is still intact (we just wrote a backup of it).
+  const tmpPath = `${client.configPath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(tmpPath, `${JSON.stringify(existing, null, 2)}\n`, 'utf-8');
+    renameSync(tmpPath, client.configPath);
+  } catch (err) {
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // best-effort cleanup
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      client: client.name,
+      configPath: client.configPath,
+      status: 'skipped',
+      reason: `could not write config: ${message}`,
+    };
+  }
 
   if (!preExisted) {
     return { client: client.name, configPath: client.configPath, status: 'created' };

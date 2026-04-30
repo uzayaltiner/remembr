@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { runConfigModel, runConfigProvider, runConfigShow } from './commands/config-cmd.js';
+import { runDbRepair } from './commands/db-cmd.js';
 import { runFda } from './commands/fda.js';
 import { IndexError, runIndex, runWatch } from './commands/index-cmd.js';
 import { runInit } from './commands/init.js';
@@ -15,7 +16,7 @@ import { runSync } from './commands/sync-cmd.js';
 import { bootstrapPlugins } from './plugins/index.js';
 import { renderTUI } from './ui/render.js';
 
-const VERSION = '0.1.0';
+const VERSION = '1.0.0';
 
 bootstrapPlugins();
 
@@ -34,6 +35,7 @@ const KNOWN_COMMANDS = new Set([
   'config',
   'mcp',
   'fda',
+  'db',
   'help',
   '--help',
   '-h',
@@ -209,11 +211,19 @@ config
 
 config
   .command('provider <name>')
-  .description('Switch the embedding provider: transformers (default) | ollama | voyage | openai')
+  .description('Switch the embedding provider: transformers (default) | ollama')
   .option('-m, --model <model>', 'pin a specific model for this provider')
   .option('--reset', 'wipe the existing index (recommended when changing providers)')
   .action((name: string, opts: { model?: string; reset?: boolean }) => {
     runConfigProvider(name, { model: opts.model, reset: opts.reset });
+  });
+
+const db = program.command('db').description('Maintenance commands for the index database');
+
+db.command('repair')
+  .description("Quarantine a corrupt index so the next 'remembr sync' rebuilds it")
+  .action(() => {
+    runDbRepair();
   });
 
 const mcp = program.command('mcp').description('Manage MCP client integrations');

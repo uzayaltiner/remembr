@@ -67,6 +67,7 @@ export const calendarPlugin: Plugin = {
   description: 'Indexes Apple Calendar events directly from the live database (macOS).',
 
   async isAvailable(): Promise<boolean> {
+    if (process.platform !== 'darwin') return false;
     return CANDIDATE_PATHS.some(existsSync);
   },
 

@@ -1,0 +1,78 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly.
+labels: ['bug']
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem.
+      placeholder: I ran X and expected Y, but got Z.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact CLI invocations (or MCP tool calls) that trigger it.
+      render: shell
+      placeholder: |
+        $ remembr setup --yes
+        $ remembr "rust async"
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of `remembr status`
+      description: Run it and paste the result here.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: remembr version
+      description: Output of `remembr --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      description: e.g. macOS 15.4.1 (M2 Pro), Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        Last ~20 lines from `~/.remembr/logs/<today>.log` if this is a
+        runtime error. Logs are JSONL — please redact any PII before
+        pasting.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues for duplicates.
+          required: true
+        - label: I have redacted PII from any pasted logs.
+          required: true

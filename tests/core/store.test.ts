@@ -215,4 +215,111 @@ describe('Store', () => {
       s2.close();
     });
   });
+
+  describe('upsertChunks (batch)', () => {
+    it('inserts every item in a single transaction and returns ids in order', () => {
+      const ids = store.upsertChunks([
+        { chunk: chunk({ documentId: 'a', chunkIndex: 0 }), vector: vec(1, 0, 0, 0) },
+        { chunk: chunk({ documentId: 'b', chunkIndex: 0 }), vector: vec(0, 1, 0, 0) },
+        { chunk: chunk({ documentId: 'c', chunkIndex: 0 }), vector: vec(0, 0, 1, 0) },
+      ]);
+      expect(ids).toHaveLength(3);
+      expect(ids[1]).toBeGreaterThan(ids[0] ?? 0);
+      expect(store.count()).toBe(3);
+    });
+
+    it('rolls back the entire batch on a single dimension error', () => {
+      expect(() =>
+        store.upsertChunks([
+          { chunk: chunk({ documentId: 'good', chunkIndex: 0 }), vector: vec(1, 0, 0, 0) },
+          // bad: only 3 dims
+          { chunk: chunk({ documentId: 'bad', chunkIndex: 0 }), vector: [1, 0, 0] },
+        ]),
+      ).toThrow(/dimension mismatch/i);
+      // No partial inserts — transaction should have rolled back.
+      expect(store.count()).toBe(0);
+    });
+
+    it('returns [] for an empty batch', () => {
+      expect(store.upsertChunks([])).toEqual([]);
+    });
+  });
+
+  describe('searchHybrid (RRF)', () => {
+    beforeEach(() => {
+      store.upsertChunk(
+        chunk({ documentId: 'r', title: 'Rust async', content: 'tokio executor primer' }),
+        vec(1, 0, 0, 0),
+      );
+      store.upsertChunk(
+        chunk({ documentId: 't', title: 'Tokio runtime', content: 'green thread scheduler' }),
+        vec(0.9, 0.1, 0, 0),
+      );
+      store.upsertChunk(
+        chunk({ documentId: 'p', title: 'Pasta recipe', content: 'boil water add salt' }),
+        vec(0, 0, 1, 0),
+      );
+    });
+
+    it('returns semantic-only hits when the keyword query has no matches', () => {
+      const results = store.searchHybrid(vec(1, 0, 0, 0), '   ', { limit: 3 });
+      expect(results).toHaveLength(3);
+      expect(results[0]?.title).toBe('Rust async');
+    });
+
+    it('boosts a chunk that matches both the vector and the FTS query', () => {
+      // 'tokio' appears only in 'Rust async' content — so it both matches FTS
+      // and is the top semantic hit. Should rank first.
+      const results = store.searchHybrid(vec(1, 0, 0, 0), 'tokio', { limit: 3 });
+      expect(results[0]?.documentId).toBe('r');
+    });
+
+    it('surfaces FTS-only hits even when their vector is far away', () => {
+      // 'pasta' is semantically the cooking note; query vector points at rust.
+      // Without keyword fusion the cooking note would rank last.
+      const results = store.searchHybrid(vec(1, 0, 0, 0), 'pasta', { limit: 3 });
+      expect(results.some((r) => r.documentId === 'p')).toBe(true);
+    });
+
+    it('respects the source filter', () => {
+      store.upsertChunk(
+        chunk({
+          source: 'browser',
+          documentId: 'br',
+          title: 'Browser hit',
+          content: 'rust async tokio',
+        }),
+        vec(1, 0, 0, 0),
+      );
+      const results = store.searchHybrid(vec(1, 0, 0, 0), 'rust', {
+        limit: 10,
+        source: 'browser',
+      });
+      expect(results).not.toHaveLength(0);
+      expect(results.every((r) => r.source === 'browser')).toBe(true);
+    });
+
+    it('survives queries that contain only FTS metacharacters', () => {
+      // No alphanumeric tokens — FTS should silently fall back to semantic.
+      const results = store.searchHybrid(vec(1, 0, 0, 0), '!!!', { limit: 3 });
+      expect(results).toHaveLength(3);
+    });
+
+    it('rejects mismatched query dimensions', () => {
+      expect(() => store.searchHybrid([1, 0, 0], 'rust')).toThrow(/dimension mismatch/i);
+    });
+  });
+
+  describe('dimension probe on reopen', () => {
+    it('throws StoreOpenError when the embedder dim no longer matches the stored vectors', () => {
+      const path = join(tmpDir, 'dim.db');
+      const s1 = new Store({ path, dimensions: 4 });
+      s1.upsertChunk(chunk({ documentId: 'd' }), [1, 0, 0, 0]);
+      s1.close();
+
+      expect(() => new Store({ path, dimensions: 8 })).toThrow(
+        /dimension mismatch/i,
+      );
+    });
+  });
 });

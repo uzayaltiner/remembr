@@ -27,12 +27,6 @@ export function createEmbedder(config: BrainConfig): Embedder {
         model: config.embedder?.model ?? config.ollama.model,
       });
 
-    case 'voyage':
-    case 'openai':
-      throw new EmbedderError(
-        `Provider '${provider}' is on the roadmap but not yet implemented.\n  Available today: 'transformers' (default), 'ollama'.`,
-      );
-
     default:
       throw new EmbedderError(
         `Unknown embedder provider: '${provider}'.\n  Available: 'transformers', 'ollama'.`,
