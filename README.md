@@ -229,7 +229,9 @@ API providers (Voyage, OpenAI) are on the roadmap.
   every plugin's intermediate state stay local.
 - Configuration + index live in `~/.remembr/` (`0o700`); the config
   file itself is `0o600`.
-- Plugin secrets (e.g. future API tokens) live in `~/.remembr/secrets.json`, ignored by `.gitignore`.
+- API tokens for cloud providers are picked up from environment
+  variables / system keychains where applicable. remembr does not
+  store secrets in `~/.remembr/` today.
 - `remembr` itself **never calls remembr-controlled servers**.
   The only network egress is from services *you* opt into:
   - Hugging Face for the one-shot embedding-model download on first run

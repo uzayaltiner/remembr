@@ -7,15 +7,13 @@
 
 import { PATHS } from '../config/paths.js';
 import { configExists, readConfig } from '../config/settings.js';
-import { EmbedderError, createEmbedder } from '../core/embedder/index.js';
+import { createEmbedder } from '../core/embedder/index.js';
 import { type SearchResult, Store } from '../core/store.js';
 
 const SOURCE_ICONS: Record<string, string> = {
   fs: '📄',
-  markdown: '📄', // legacy
   browser: '🌐',
   pdf: '📕',
-  slack: '💬', // legacy — plugin removed in 0.1, may still exist in old indexes
   calendar: '📅',
   github: '🐙',
   mail: '✉️',
@@ -30,13 +28,11 @@ export interface SearchCommandOptions {
 
 export async function runSearch(query: string, options: SearchCommandOptions = {}): Promise<void> {
   if (!query.trim()) {
-    console.error('✗ Empty query.');
-    process.exit(1);
+    throw new Error('Empty query.');
   }
 
   if (!configExists()) {
-    console.error("✗ Not initialized. Run 'remembr init' first.");
-    process.exit(1);
+    throw new Error("Not initialized. Run 'remembr init' first.");
   }
 
   const config = readConfig();
@@ -44,10 +40,8 @@ export async function runSearch(query: string, options: SearchCommandOptions = {
   try {
     await embedder.init();
   } catch (err) {
-    const message =
-      err instanceof EmbedderError ? err.message : err instanceof Error ? err.message : String(err);
-    console.error(`✗ ${message}`);
-    process.exit(1);
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(message);
   }
 
   // Embed the query — use 'query' task prefix so retrieval-tuned models
@@ -60,8 +54,7 @@ export async function runSearch(query: string, options: SearchCommandOptions = {
 
   try {
     if (store.count() === 0) {
-      console.error('✗ Index is empty. Run: remembr index <plugin>');
-      process.exit(1);
+      throw new Error('Index is empty. Run: remembr sync');
     }
 
     results = store.searchHybrid(queryVec, query, {

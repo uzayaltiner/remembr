@@ -10,7 +10,7 @@
  * skip the buttons.
  */
 
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { platform } from 'node:os';
 import { promisify } from 'node:util';
 
@@ -69,19 +69,13 @@ export async function quitClaude(timeoutMs = 5000): Promise<void> {
 }
 
 /**
- * Launch Claude Code via `open -a`. Detached so we don't keep a child
- * process around in remembr's process tree.
+ * Launch Claude Code via `open -a`. `open` returns as soon as the
+ * launch is dispatched, so the `await` is short-lived even though the
+ * GUI app keeps running.
  */
 export async function openClaude(): Promise<void> {
   if (!isAvailable()) return;
-  await new Promise<void>((resolve, reject) => {
-    const proc = spawn('open', ['-a', CLAUDE_APP_NAME], { stdio: 'ignore' });
-    proc.on('error', reject);
-    proc.on('exit', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`open exited with code ${code}`));
-    });
-  });
+  await execFileAsync('open', ['-a', CLAUDE_APP_NAME]);
 }
 
 /**

@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export type BrowserType = 'chromium' | 'safari';
+type BrowserType = 'chromium' | 'safari';
 
 export interface BrowserInfo {
   name: string;

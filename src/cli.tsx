@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { runConfigModel, runConfigProvider, runConfigShow } from './commands/config-cmd.js';
 import { runDbRepair } from './commands/db-cmd.js';
 import { runFda } from './commands/fda.js';
-import { IndexError, runIndex, runWatch } from './commands/index-cmd.js';
+import { runIndex, runWatch } from './commands/index-cmd.js';
 import { runInit } from './commands/init.js';
 import { type ClientName, runMcpInstall } from './commands/mcp-install.js';
 import { runPathsAdd, runPathsList, runPathsRemove } from './commands/paths-cmd.js';
@@ -122,20 +122,10 @@ program
         maxAgeDays: opts.maxAgeDays,
         reset: opts.reset,
       };
-      try {
-        if (opts.watch) {
-          await runWatch(pluginName, indexOptions);
-        } else {
-          await runIndex(pluginName, indexOptions);
-        }
-      } catch (err) {
-        if (err instanceof IndexError) {
-          for (const line of err.message.split('\n')) {
-            console.error(line.startsWith('✗') ? line : `✗ ${line}`);
-          }
-          process.exit(1);
-        }
-        throw err;
+      if (opts.watch) {
+        await runWatch(pluginName, indexOptions);
+      } else {
+        await runIndex(pluginName, indexOptions);
       }
     },
   );
@@ -262,6 +252,12 @@ plugins
 
 program.parseAsync().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`✗ ${message}`);
+  for (const line of message.split('\n')) {
+    if (line.length === 0) {
+      console.error('');
+      continue;
+    }
+    console.error(line.startsWith('✗') ? line : `✗ ${line}`);
+  }
   process.exit(1);
 });

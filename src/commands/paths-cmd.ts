@@ -106,16 +106,15 @@ export function runPathsList(pluginName?: string): void {
 
 function ensureInitialized(): void {
   if (!configExists()) {
-    console.error("✗ Not initialized. Run 'remembr init' first.");
-    process.exit(1);
+    throw new Error("Not initialized. Run 'remembr init' first.");
   }
 }
 
 function ensureKnownPlugin(name: string): void {
   if (!registry.has(name)) {
-    console.error(`✗ Unknown plugin: '${name}'`);
-    console.error("  Run 'remembr plugins list' to see available plugins.");
-    process.exit(1);
+    throw new Error(
+      `Unknown plugin: '${name}'\n  Run 'remembr plugins list' to see available plugins.`,
+    );
   }
 }
 

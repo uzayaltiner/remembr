@@ -71,9 +71,9 @@ function resolveModelCacheDir(model: string): string | null {
  *  - 'q8' / 'int8'   : 8-bit quantized — fast, marginal quality loss.
  *  - 'q4'           : 4-bit — fastest but more aggressive on quality.
  */
-export type TransformersDtype = 'fp32' | 'fp16' | 'q8' | 'int8' | 'q4';
+type TransformersDtype = 'fp32' | 'fp16' | 'q8' | 'int8' | 'q4';
 
-export interface TransformersEmbedderOptions {
+interface TransformersEmbedderOptions {
   /** HF model id, e.g. 'Xenova/multilingual-e5-small'. */
   model: string;
   /** Weight precision; defaults to 'q8' for the speed/quality balance. */

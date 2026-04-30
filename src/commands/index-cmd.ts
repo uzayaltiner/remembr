@@ -420,9 +420,9 @@ function decideForDocument(
  */
 export async function runWatch(pluginName: string, options: IndexOptions = {}): Promise<void> {
   if (!options.path || options.path.length === 0) {
-    console.error("✗ --watch requires --path (browser plugin doesn't support watch).");
-    console.error('  Example: remembr index markdown --path ~/Notes --watch');
-    process.exit(1);
+    throw new IndexError(
+      "--watch requires --path (browser plugin doesn't support watch).\n  Example: remembr index markdown --path ~/Notes --watch",
+    );
   }
 
   // Initial full index

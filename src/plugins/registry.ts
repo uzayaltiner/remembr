@@ -1,7 +1,7 @@
 import type { BrainConfig, PluginConfig } from '../config/settings.js';
 import type { Plugin } from './types.js';
 
-export interface PluginStatus {
+interface PluginStatus {
   plugin: Plugin;
   enabled: boolean;
   available: boolean;

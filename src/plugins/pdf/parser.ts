@@ -4,6 +4,11 @@
  * Uses `pdf-parse` to pull plain text out of a PDF, then chunks it on
  * paragraph boundaries (PDFs rarely have reliable heading markup).
  *
+ * Chunk size primitives live in `../_shared/chunker.ts`. PDFs use a
+ * higher `min` because they tend to produce a lot of single-line
+ * footer / header / page-number garbage that would otherwise survive
+ * the merge pass.
+ *
  * Limitations:
  *  - Scanned PDFs without OCR yield no text. We surface this as an
  *    empty-document case rather than crashing.
@@ -12,10 +17,14 @@
  */
 
 import { PDFParse } from 'pdf-parse';
+import {
+  MAX_CHUNK_CHARS,
+  TARGET_CHUNK_CHARS,
+  assembleParagraphs,
+  mergeUndersized,
+} from '../_shared/chunker.js';
 
-export const MIN_CHUNK_CHARS = 300;
-export const TARGET_CHUNK_CHARS = 1500;
-export const MAX_CHUNK_CHARS = 2400;
+const PDF_MIN_CHUNK_CHARS = 300;
 
 export interface ParsedPdf {
   /** Title from PDF info dict, or null. */
@@ -81,73 +90,10 @@ function cleanText(raw: string): string {
 }
 
 export function chunkPdfText(text: string): string[] {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return [];
-
-  const paragraphs = trimmed.split(/\n\s*\n/).filter((p) => p.length > 0);
-
-  const chunks: string[] = [];
-  let buffer = '';
-
-  for (const para of paragraphs) {
-    if (para.length > MAX_CHUNK_CHARS) {
-      if (buffer.length > 0) {
-        chunks.push(buffer);
-        buffer = '';
-      }
-      chunks.push(...hardSplit(para));
-      continue;
-    }
-
-    if (buffer.length === 0) {
-      buffer = para;
-    } else if (buffer.length + para.length + 2 <= TARGET_CHUNK_CHARS) {
-      buffer = `${buffer}\n\n${para}`;
-    } else {
-      chunks.push(buffer);
-      buffer = para;
-    }
-  }
-
-  if (buffer.length > 0) chunks.push(buffer);
-
-  return mergeUndersized(chunks);
-}
-
-function hardSplit(text: string): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < text.length; i += TARGET_CHUNK_CHARS) {
-    out.push(text.slice(i, i + TARGET_CHUNK_CHARS));
-  }
-  return out;
-}
-
-function mergeUndersized(chunks: string[]): string[] {
-  if (chunks.length <= 1) return chunks;
-
-  const out: string[] = [];
-  let pending = '';
-
-  for (const chunk of chunks) {
-    if (pending.length === 0) {
-      pending = chunk;
-      continue;
-    }
-    if (pending.length < MIN_CHUNK_CHARS) {
-      pending = `${pending}\n\n${chunk}`;
-    } else {
-      out.push(pending);
-      pending = chunk;
-    }
-  }
-
-  if (pending.length > 0) {
-    if (pending.length < MIN_CHUNK_CHARS && out.length > 0) {
-      out[out.length - 1] = `${out[out.length - 1]}\n\n${pending}`;
-    } else {
-      out.push(pending);
-    }
-  }
-
-  return out.map((c) => c.trim()).filter((c) => c.length > 0);
+  const chunks = assembleParagraphs(text, {
+    min: PDF_MIN_CHUNK_CHARS,
+    target: TARGET_CHUNK_CHARS,
+    max: MAX_CHUNK_CHARS,
+  });
+  return mergeUndersized(chunks, PDF_MIN_CHUNK_CHARS);
 }

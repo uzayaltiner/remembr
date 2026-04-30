@@ -33,9 +33,9 @@ export function runPluginDisable(name: string): void {
 
 function togglePlugin(name: string, enabled: boolean): void {
   if (!registry.has(name)) {
-    console.error(`✗ Unknown plugin: '${name}'`);
-    console.error(`  Run 'remembr plugins list' to see available plugins.`);
-    process.exit(1);
+    throw new Error(
+      `Unknown plugin: '${name}'\n  Run 'remembr plugins list' to see available plugins.`,
+    );
   }
 
   const config = readConfig();

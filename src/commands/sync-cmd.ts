@@ -57,8 +57,7 @@ function orderRank(name: string): number {
 
 export async function runSync(options: SyncOptions = {}): Promise<void> {
   if (!configExists()) {
-    console.error("✗ Not initialized. Run 'remembr init' first.");
-    process.exit(1);
+    throw new Error("Not initialized. Run 'remembr init' first.");
   }
 
   // Serialize against any concurrent `remembr sync` / `remembr index`.
@@ -68,8 +67,7 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
     lock = acquireWriteLock();
   } catch (err) {
     if (err instanceof LockBusyError) {
-      console.error(`✗ ${err.message}`);
-      process.exit(1);
+      throw new Error(err.message);
     }
     throw err;
   }

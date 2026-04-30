@@ -18,7 +18,7 @@ import { ensureHome } from './settings.js';
 
 export type SetupPhase = 'bootstrap' | 'paths' | 'fda' | 'mcp' | 'sync';
 
-export interface PhaseResult {
+interface PhaseResult {
   /** True once the phase ran to completion (or was deliberately skipped). */
   completed: boolean;
   /** ISO timestamp of the most recent attempt — useful for debugging. */
@@ -27,7 +27,7 @@ export interface PhaseResult {
   detail?: string;
 }
 
-export interface SetupState {
+interface SetupState {
   /** Schema version of this file — bumped on incompatible field changes. */
   version: 1;
   phases: Record<SetupPhase, PhaseResult>;

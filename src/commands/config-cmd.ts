@@ -13,8 +13,7 @@ import { configExists, readConfig, writeConfig } from '../config/settings.js';
 
 export function runConfigShow(): void {
   if (!configExists()) {
-    console.error("✗ Not initialized. Run 'remembr init' first.");
-    process.exit(1);
+    throw new Error("Not initialized. Run 'remembr init' first.");
   }
   const config = readConfig();
   console.log(JSON.stringify(config, null, 2));
@@ -27,8 +26,7 @@ export interface ConfigModelOptions {
 
 export function runConfigModel(model: string, options: ConfigModelOptions = {}): void {
   if (!configExists()) {
-    console.error("✗ Not initialized. Run 'remembr init' first.");
-    process.exit(1);
+    throw new Error("Not initialized. Run 'remembr init' first.");
   }
 
   const config = readConfig();
@@ -86,13 +84,10 @@ const DEFAULT_PROVIDER_MODEL: Record<ProviderName, string> = {
 
 export function runConfigProvider(provider: string, options: ConfigProviderOptions = {}): void {
   if (!configExists()) {
-    console.error("✗ Not initialized. Run 'remembr init' first.");
-    process.exit(1);
+    throw new Error("Not initialized. Run 'remembr init' first.");
   }
   if (!VALID_PROVIDERS.includes(provider as ProviderName)) {
-    console.error(`✗ Unknown provider: '${provider}'`);
-    console.error(`  Available: ${VALID_PROVIDERS.join(', ')}`);
-    process.exit(1);
+    throw new Error(`Unknown provider: '${provider}'\n  Available: ${VALID_PROVIDERS.join(', ')}`);
   }
 
   const config = readConfig();

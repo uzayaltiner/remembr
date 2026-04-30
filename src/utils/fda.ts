@@ -15,8 +15,11 @@
  * opened" — out of scope, return null.
  */
 
-import { spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { closeSync, existsSync, openSync } from 'node:fs';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -64,29 +67,6 @@ export function checkFullDiskAccess(): FdaStatus {
  * for the user to grant access. Callers should re-check `checkFullDiskAccess`
  * after a UI prompt.
  */
-export function openFdaSystemSettings(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('open', [FDA_DEEPLINK], { stdio: 'ignore' });
-    proc.on('error', reject);
-    proc.on('exit', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`open exited with code ${code}`));
-    });
-  });
-}
-
-/**
- * Convenience wait-for-keypress on stdin. Resolves when the user hits
- * Enter (or any line). Caller is expected to print a prompt first.
- */
-export function waitForEnter(): Promise<void> {
-  return new Promise((resolve) => {
-    const onData = (): void => {
-      process.stdin.removeListener('data', onData);
-      process.stdin.pause();
-      resolve();
-    };
-    process.stdin.resume();
-    process.stdin.once('data', onData);
-  });
+export async function openFdaSystemSettings(): Promise<void> {
+  await execFileAsync('open', [FDA_DEEPLINK]);
 }

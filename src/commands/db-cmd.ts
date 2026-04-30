@@ -7,16 +7,10 @@
  * the index is reproducible.
  */
 
-import { renameSync } from 'node:fs';
-import { existsSync } from 'node:fs';
+import { existsSync, renameSync } from 'node:fs';
 import { PATHS } from '../config/paths.js';
 
-export interface DbRepairOptions {
-  /** Skip the confirmation print and just do it. */
-  yes?: boolean;
-}
-
-export function runDbRepair(_options: DbRepairOptions = {}): void {
+export function runDbRepair(): void {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const suffixes = ['', '-wal', '-shm'];
 
@@ -30,8 +24,7 @@ export function runDbRepair(_options: DbRepairOptions = {}): void {
       moved.push(dst);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`✗ Could not move ${src} → ${dst}: ${msg}`);
-      process.exit(1);
+      throw new Error(`Could not move ${src} → ${dst}: ${msg}`);
     }
   }
 

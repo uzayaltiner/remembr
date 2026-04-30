@@ -45,7 +45,7 @@ export interface IngestContext {
   signal?: AbortSignal;
 }
 
-export interface ProgressEvent {
+interface ProgressEvent {
   current: number;
   total?: number;
   message?: string;

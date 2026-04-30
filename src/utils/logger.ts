@@ -21,13 +21,13 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 const LEVEL_RANK: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
 function envLevel(): LogLevel {
-  const raw = (process.env.BRAIN_LOG_LEVEL ?? '').toLowerCase();
+  const raw = (process.env.REMEMBR_LOG_LEVEL ?? '').toLowerCase();
   if (raw === 'debug' || raw === 'info' || raw === 'warn' || raw === 'error') return raw;
   return 'info';
 }
 
 const minLevel = envLevel();
-const debugStdout = (process.env.BRAIN_DEBUG ?? '') !== '';
+const debugStdout = (process.env.REMEMBR_DEBUG ?? '') !== '';
 
 function logFilePath(): string {
   const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
